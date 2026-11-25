@@ -1,8 +1,11 @@
-// A few of the rainforest creatures, visiting the mushroom path: glider shrimps looping between the caps, a canopy mantis-shrimp
-// watching from a stepping stone, a shell walker and a spore grazer at the feet of the fungi, frond hoppers in the grass.
+// A few of the rainforest creatures, visiting the mushroom path (Damian, 25 Nov 2026: they "walk or fly into the scene", "crawl
+// using their legs", some "up the mushroom stems", and "the flying ones could land on the tops of mushrooms"; "make sure nothing
+// goes through a mushroom"). Walkers find their way round the fungi on the ground (world.js), climb a stem by feeling its real
+// surface, and come down again; gliders fly in from the trees and go from cap to cap on flights tested clear before they leave.
 // Models and skin shaders are the reef-forest look-around's; shown at 2 to 3 times life size so a phone can read them.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { ab, basisQuat } from './world.js';
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const TIME = { value: 0 };
@@ -49,7 +52,7 @@ vec3 ramp5(float t, vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4, float p1, float
 // vertex motion by part kind (MaskF.b): whips sway, membranes flutter, limbs tremble, everything breathes
 const VERT = `
 attribute vec4 color;
-uniform float uTime, uPhase, uFlap, uSway, uCalm;
+uniform float uTime, uPhase, uFlap, uSway, uCalm, uGait, uWalk;
 varying vec4 vMask; varying vec3 vObj;`;
 const VERT_MOVE = `
   vMask = color; vObj = position;
@@ -63,6 +66,10 @@ const VERT_MOVE = `
   transformed.y += isMemb * along * along * 0.035 * flap * sign(position.x + 1e-4) * (0.4 + 0.6 * abs(position.x) * 6.0);
   transformed += normal * isMemb * along * 0.002 * sin(t * 5.0 + color.g * 9.0);
   transformed += normal * isLimb * along * 0.0012 * sin(t * 7.0 + color.a * 20.0) * (1.0 - uCalm);
+  // walking: each pair of legs swings forward and back and lifts on the way forward, left and right in turn, pair after pair
+  float gph = uGait + floor(color.a * 50.0) * 2.1 + step(0.0, position.x) * 3.14159, reach = abs(position.x);
+  transformed.z += isLimb * uWalk * along * reach * 0.55 * sin(gph);
+  transformed.y += isLimb * uWalk * along * reach * 0.30 * max(0.0, cos(gph));
   transformed *= 1.0 + 0.008 * sin(t * 1.4) * (1.0 - isWhip);`;
 
 function v3(c) { return new THREE.Vector3(...c); }
@@ -80,7 +87,7 @@ function partMaterial(prefix, part) {
     if (part === 'Memb' && P.membSolid) m.side = THREE.DoubleSide;
   }
   const shellStops = ramp(P.shell), membStops = ramp(P.memb);
-  const u = { uTime: TIME, uPhase: { value: 0 }, uFlap: { value: 0.25 }, uSway: { value: 1 }, uCalm: { value: 0 },
+  const u = { uTime: TIME, uPhase: { value: 0 }, uFlap: { value: 0.25 }, uSway: { value: 1 }, uCalm: { value: 0 }, uGait: { value: 0 }, uWalk: { value: 0 },
     c0: { value: v3(shellStops[0][1]) }, c1: { value: v3(shellStops[1][1]) }, c2: { value: v3(shellStops[2][1]) }, c3: { value: v3(shellStops[3][1]) }, c4: { value: v3(shellStops[4][1]) },
     p: { value: new THREE.Vector3(shellStops[1][0] || .3, shellStops[2][0] || .6, shellStops[3][0] || .9) },
     m0: { value: v3(membStops[0][1]) }, m1: { value: v3(membStops[1][1]) }, m2: { value: v3(membStops[2][1]) }, m3: { value: v3(membStops[3][1]) }, m4: { value: v3(membStops[4][1]) },
@@ -138,57 +145,152 @@ function partMaterial(prefix, part) {
 }
 
 
-// where each one lives: x east, z south (metres from where you stand), y up
+
+// who comes, from where (metres along the stepping stones, metres to their right), and when
 const CAST = [
-  { n: 'CanopyMantis', at: [1.75, 0.02, -1.55], s: 2.4, role: 'watcher' },
-  { n: 'ShellWalker', at: [-1.9, 0, 0.9], s: 1.8, role: 'shy' },
-  { n: 'SporeGrazer', at: [2.6, 0, 0.75], s: 2.6, role: 'grazer' },
-  { n: 'FrondHopper', at: [-1.5, 0, -2.4], s: 3.0, role: 'hopper' },
-  { n: 'FrondHopper', at: [0.3, 0, 2.6], s: 2.7, role: 'hopper' },
-  { n: 'FrondHopper', at: [3.4, 0, -3.6], s: 2.8, role: 'hopper' },
-  { n: 'GliderShrimp', at: [0.5, 2.7, -1.0], s: 2.3, role: 'glider', r: 3.2 },
-  { n: 'GliderShrimp', at: [-1.0, 3.6, 0.5], s: 2.0, role: 'glider', r: 4.6 },
+  { n: 'FrondHopper', s: 3.0, role: 'hopper', from: [-7, 2.5], home: [-1.4, -1.9], arrive: 2, rad: 0.4 },
+  { n: 'ShellWalker', s: 1.8, role: 'crawler', from: [-8, 3], arrive: 4, sp: 0.5, rad: 0.4, len: 0.25, climbs: true, ang: 0.5 },
+  { n: 'FrondHopper', s: 2.7, role: 'hopper', from: [3, 9], home: [0.8, 2.6], arrive: 9, rad: 0.4 },
+  { n: 'SporeGrazer', s: 2.4, role: 'crawler', from: [10, 5.5], arrive: 12, sp: 0.55, rad: 0.4, len: 0.22, climbs: true, ang: -0.5 },
+  { n: 'FrondHopper', s: 2.8, role: 'hopper', from: [9, 5], home: [4.3, 2.6], arrive: 16, rad: 0.4 },
+  { n: 'GliderShrimp', s: 1.9, role: 'glider', az: 120, arrive: 20 },
+  { n: 'CanopyMantis', s: 2.0, role: 'crawler', from: [11, 0.4], arrive: 24, sp: 0.75, rad: 0.7, len: 0.47, climbs: false, watcher: true },
+  { n: 'GliderShrimp', s: 1.6, role: 'glider', az: 205, arrive: 38 },
 ];
-export async function createBugs({ scene, bin, camera }) {
+const CLIMB = [11, 9, 10, 12, 15, 14, 5, 26, 27, 16], LAND = [1, 4, 5, 16, 17, 24, 21, 22];      // fungi (by their place in the layout) worth climbing, and with tops to land on
+const Y = new THREE.Vector3(0, 1, 0);
+export async function createBugs({ scene, bin, camera, fungi, world: W }) {
   const loader = new GLTFLoader(), lib = {};
   await Promise.all([...new Set(CAST.map(c => c.n))].map(async n => { lib[n] = (await loader.parseAsync((await bin(n + '_glb.txt')).buffer, '')).scene; }));
+  for (const fi of new Set([...CLIMB, ...LAND])) if (fungi[fi]) fungi[fi].keep = true;      // a fungus with a visitor on it does not sink back into the ground under it
+  const grown = fi => fungi[fi] && fungi[fi].state === 'grown';
+  const busy = {}, top = {};
+  // --- feeling the real shape of a fungus ---
+  const spots = {}, v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
+  function landSpot(fi) { if (fi in spots) return spots[fi]; const f = fungi[fi]; let best = null, hi = -1; f.root.updateMatrixWorld(true);
+    f.root.traverse(o => { if (!o.isMesh || !o.visible) return; const P = o.geometry.attributes.position, N = o.geometry.attributes.normal;
+      for (let j = 0; j < P.count; j++) { v2.fromBufferAttribute(N, j).transformDirection(o.matrixWorld); if (v2.y < 0.93) continue; v1.fromBufferAttribute(P, j).applyMatrix4(o.matrixWorld); if (v1.y > hi) { hi = v1.y; best = { p: v1.clone(), n: v2.clone() }; } } });
+    if (best) best.n.lerp(Y, 0.6).normalize();      // it settles nearly level, whatever the bump it found
+    if (best && W.hit(v1.copy(best.p).addScaledVector(best.n, 0.5), 0.2, -1) >= 0) best = null;
+    return spots[fi] = best; }
+  const climbs = {}, ray = new THREE.Raycaster();
+  function climbPath(fi, ang) { const key = fi + ':' + ang; if (key in climbs) return climbs[key];
+    const f = fungi[fi], c = f.root.position, toV = new THREE.Vector3(-c.x, 0, -c.z).normalize().applyAxisAngle(Y, ang), lat = new THREE.Vector3(toV.z, 0, -toV.x), neg = toV.clone().negate(), nlat = lat.clone().negate(), meshes = [];
+    f.root.updateMatrixWorld(true); f.root.traverse(o => { if (o.isMesh && o.visible) meshes.push(o); });
+    const cast = (o, d, far) => { ray.set(o, d); ray.far = far; const h = ray.intersectObjects(meshes, false)[0]; if (!h) return null; const n = h.face.normal.clone().transformDirection(h.object.matrixWorld); if (n.dot(d) > 0) n.negate(); return { p: h.point.clone(), n }; };
+    const pts = []; let ax = c.x, az = c.z;
+    for (let y = 0.1; y < 9; y += 0.1) {
+      let h = null; for (const off of pts.length ? [0] : [0, 0.15, -0.15, 0.35, -0.35, 0.6, -0.6]) { h = cast(new THREE.Vector3(ax + toV.x * 3 + lat.x * off, y, az + toV.z * 3 + lat.z * off), neg, 5); if (h) { ax += lat.x * off; az += lat.z * off; break; } }
+      if (!h) break;
+      if (pts.length) { const l = pts[pts.length - 1].p; if (Math.hypot(h.p.x - l.x, h.p.z - l.z) > 0.28) break; }
+      if (h.n.y < -0.45 || h.n.y > 0.8) break;                                                       // the underside of the cap, or a shelf
+      if (cast(h.p.clone().addScaledVector(h.n, 0.1), Y, 0.5)) break;                                 // head room under the cap
+      if (W.hit(v1.copy(h.p).addScaledVector(h.n, 0.3), 0.4, fi) >= 0) break;                         // a neighbour in the way
+      pts.push(h);
+      const inside = h.p.clone().addScaledVector(toV, -0.05), L = cast(inside.clone().addScaledVector(lat, 2), nlat, 2.6), R = cast(inside.clone().addScaledVector(lat, -2), lat, 2.6);
+      if (L && R) { const d = ((L.p.x + R.p.x) / 2 - ax) * lat.x + ((L.p.z + R.p.z) / 2 - az) * lat.z; if (Math.abs(d) < 0.2) { ax += lat.x * d; az += lat.z * d; } }
+    }
+    for (let i = 0; i < pts.length; i++) { const n = new THREE.Vector3(); for (let k = -2; k <= 2; k++) n.add(pts[Math.min(pts.length - 1, Math.max(0, i + k))].n); pts[i].ns = n.normalize(); }
+    return climbs[key] = pts.length >= 9 ? pts : null; }
+  // the fungus sways and leans; whatever is on it goes with it
+  function sway(fi, y, out) { const f = fungi[fi], U = f.U, s = f.root.scale.x, H = U.uH.value, t = U.uTime.value, ph = U.uPhase.value, hk = Math.min(1.2, y / s / H);
+    return out.set(Math.sin(t * 0.31 + ph) * 0.025 * H + U.uLook.value.x * H, 0, Math.cos(t * 0.23 + ph * 1.7) * 0.025 * H + U.uLook.value.y * H).multiplyScalar(hk * hk * s).applyAxisAngle(Y, f.root.rotation.y); }
+
   const list = CAST.map((c, i) => {
     const g = lib[c.n].clone(true), mats = [];
     g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = true;
       const arr = Array.isArray(o.material) ? o.material : [o.material];
       const nm = arr.map(m => { const [pre, part] = (m.name || 'CM_Shell').split('_'); const mm = partMaterial(pre, part); mats.push(mm); return mm; });
       o.material = Array.isArray(o.material) ? nm : nm[0]; o.renderOrder = arr.some(m => /Memb|Lattice/.test(m.name)) ? 2 : 1; });
-    const root = new THREE.Group(); root.add(g); root.scale.setScalar(0.001); root.visible = false; scene.add(root);
-    const home = new THREE.Vector3(...c.at), phase = i * 1.7 + 0.3;
-    for (const m of mats) { m.userData.u.uPhase.value = phase; m.userData.u.uFlap.value = c.role === 'glider' ? 0.9 : c.n === 'CanopyMantis' ? 0.35 : 0.25; }
-    return { ...c, root, mats, home, pos: home.clone(), phase, yaw: Math.atan2(-home.x, -home.z), yawNow: Math.atan2(-home.x, -home.z), look: 0, t: Math.random() * 10, state: 'idle', timer: 2 + Math.random() * 3, target: home.clone(), from: home.clone(), grow: 0, arrive: 6 + i * 5 };
+    const root = new THREE.Group(); root.add(g); root.scale.setScalar(c.s); root.visible = false; scene.add(root);
+    for (const m of mats) m.userData.u.uPhase.value = i * 1.7 + 0.3;
+    return { ...c, i, root, mats, pos: new THREE.Vector3(), q: new THREE.Quaternion(), qWant: new THREE.Quaternion(), fwd: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0), mode: 'wait', t: 0, gait: 0, walk: 0, flap: 0.25, host: -1 };
   });
-  const camDir = new THREE.Vector3(), d = new THREE.Vector3(), toCam = new THREE.Vector3();
-  return {
-    reset() { for (const b of list) { b.grow = 0; b.root.visible = false; b.pos.copy(b.home); b.state = 'idle'; } },
+  const set = (b, k, x) => { for (const m of b.mats) m.userData.u[k].value = x; };
+  const enter = b => b.from ? ab(b.from[0], b.from[1]) : new THREE.Vector3();
+  const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), off = new THREE.Vector3();
+
+  // --- walkers ---
+  function walkTo(b, P, after) { const path = W.findPath(b.pos, P, b.rad); if (!path || path.length < 2) return false; b.path = path; b.seg = 0; b.mode = 'walk'; b.after = after; return true; }
+  function crawlerNext(b) {
+    if (b.climbs && Math.random() < 0.75) {
+      for (const fi of CLIMB.filter(fi => grown(fi) && !busy[fi] && fi !== b.last).sort(() => Math.random() - 0.5)) { const cp = climbPath(fi, b.ang); if (!cp) continue;
+        const base = cp[0].p.clone().addScaledVector(cp[0].ns, 0.3).setY(0); if (!walkTo(b, base, 'up')) continue;
+        b.path.push(cp[0].p.clone().setY(0)); busy[fi] = b; b.prev = b.last; b.host = fi; b.last = fi; b.cp = cp; return; } }
+    for (let k = 0; k < 30; k++) { const a = Math.random() * 6.283, r = 1.9 + Math.random() * 4.5; tmp.set(Math.cos(a) * r, 0, Math.sin(a) * r); if (W.free(tmp, b.rad + 0.1) && walkTo(b, tmp.clone(), 'pause')) return; }
+    b.mode = 'pause'; b.t = 3;
+  }
+  function crawler(b, dt) {
+    let moved = 0; b.up.set(0, 1, 0);
+    if (b.mode === 'walk') { let step = b.sp * dt; moved = step;
+      while (step > 0 && b.seg < b.path.length - 1) { const to = b.path[b.seg + 1], d = tmp.subVectors(to, b.pos).length(); if (d > 1e-4) b.fwd.copy(tmp).normalize(); if (d <= step) { b.pos.copy(to); step -= d; b.seg++; } else { b.pos.addScaledVector(b.fwd, step); step = 0; } }
+      if (b.seg >= b.path.length - 1) { if (b.after === 'up' && grown(b.host)) { b.mode = 'up'; b.ci = 0; } else { if (b.host >= 0) { busy[b.host] = null; b.host = -1; } b.mode = 'pause'; b.t = 4 + Math.random() * 6; } } }
+    else if (b.mode === 'pause') { b.t -= dt; if (b.watcher) { tmp.subVectors(camera.position, b.pos).setY(0).normalize(); b.fwd.lerp(tmp, 1 - Math.exp(-dt * 1.2)).normalize(); } if (b.t <= 0) crawlerNext(b); }
+    else if (b.mode === 'up' || b.mode === 'down' || b.mode === 'perch') { const cp = b.cp, last = cp.length - 1;
+      if (b.mode === 'up') { b.ci += 0.3 * dt / 0.1; moved = 0.3 * dt; if (b.ci >= last) { b.ci = last; b.mode = 'perch'; b.t = 9 + Math.random() * 12; } }
+      else if (b.mode === 'perch') { b.t -= dt; if (b.t <= 0) b.mode = 'down'; }
+      else { b.ci -= 0.36 * dt / 0.1; moved = 0.36 * dt; }
+      if (b.ci <= 0 && b.mode === 'down') { b.pos.copy(cp[0].p).setY(0); b.fwd.copy(cp[0].ns).setY(0).normalize(); busy[b.host] = null; b.host = -1; crawlerNext(b); }
+      else { const i = Math.min(last - 1, Math.floor(b.ci)), k = b.ci - i, A = cp[i], B = cp[i + 1];
+        b.pos.lerpVectors(A.p, B.p, k).add(sway(b.host, b.pos.y, off)); b.up.lerpVectors(A.ns, B.ns, k).normalize();
+        tmp.subVectors(B.p, A.p).normalize(); if (b.mode === 'down') tmp.negate(); b.fwd.copy(tmp); } }
+    b.gait += moved / (0.42 * b.len * b.s) * 6.283; b.walk += ((moved > 0 ? 1 : 0) - b.walk) * (1 - Math.exp(-dt * 6));
+    basisQuat(b.fwd, b.up, b.qWant);
+  }
+  // --- hoppers: in along the ground in short hops, then about their own patch of grass ---
+  function hopper(b, dt) {
+    b.up.set(0, 1, 0);
+    if (b.mode === 'sit') { b.t -= dt; if (b.t <= 0) {
+        let to = null;
+        if (b.path && b.seg < b.path.length - 1) { const nx = b.path[b.seg + 1], d = tmp.subVectors(nx, b.pos).length(); if (d <= 0.6) { to = nx.clone(); b.seg++; } else to = b.pos.clone().addScaledVector(tmp.normalize(), 0.55); }
+        else for (let k = 0; k < 12 && !to; k++) { const a = Math.random() * 6.283, r = 0.3 + Math.random() * 0.5; tmp.set(b.homeP.x + Math.cos(a) * r, 0, b.homeP.z + Math.sin(a) * r); if (W.free(tmp, b.rad) && W.los(b.pos, tmp, b.rad)) to = tmp.clone(); }
+        if (to) { b.from0 = b.pos.clone(); b.to = to; b.k = 0; b.mode = 'hop'; b.fwd.subVectors(to, b.pos).setY(0).normalize(); } else b.t = 1; } }
+    else if (b.mode === 'hop') { b.k = Math.min(1, b.k + dt / 0.5); b.pos.lerpVectors(b.from0, b.to, b.k); b.pos.y = Math.sin(Math.PI * b.k) * 0.28;
+      if (b.k >= 1) { b.mode = 'sit'; b.t = b.path && b.seg < b.path.length - 1 ? 0.25 + Math.random() * 0.5 : 1.5 + Math.random() * 4; } }
+    basisQuat(b.fwd, b.up, b.qWant);
+  }
+  // --- gliders: in from the trees, then from cap to cap ---
+  function gliderNext(b) {
+    for (const fi of LAND.filter(fi => grown(fi) && !top[fi] && fi !== b.host).sort(() => Math.random() - 0.5)) { const sp = landSpot(fi); if (!sp) continue;
+      const B = sp.p.clone().addScaledVector(sp.n, 0.035 * b.s); let c;
+      if (b.mode === 'wait') { const a = THREE.MathUtils.degToRad(b.az + (Math.random() - 0.5) * 50); c = W.flight(new THREE.Vector3(Math.sin(a) * 26, 9 + Math.random() * 3, -Math.cos(a) * 26), B, { r: 0.5, hostB: fi, upB: sp.n, far: true, midAt: 0.72, lifts: [2.5, 3.5, 5, 7] }); }
+      else c = W.flight(b.pos.clone(), B, { r: 0.5, hostA: b.host, upA: b.spot.n, hostB: fi, upB: sp.n });
+      if (!c) continue;
+      if (b.host >= 0) top[b.host] = null; b.prev = b.host; top[fi] = b; b.host = fi; b.spot = sp; b.land = B; b.curve = c; b.u = 0; b.mode = 'fly'; return true; }
+    return false; }
+  function glider(b, dt) {
+    if (b.mode === 'fly') { const L = b.curve.len, left = (1 - b.u) * L, sp = 0.5 + 2.6 * smooth(0, 2.2, left) * (0.35 + 0.65 * smooth(0, 1.2, b.u * L + 0.4));
+      b.u = Math.min(1, b.u + sp * dt / L); b.curve.getPointAt(b.u, b.pos); b.curve.getTangentAt(b.u, b.fwd); b.up.set(0, 1, 0); b.flap = 0.9;
+      if (left < 0.5) { b.up.lerpVectors(Y, b.spot.n, 1 - left / 0.5).normalize(); tmp.copy(b.fwd).addScaledVector(b.up, -b.fwd.dot(b.up)); if (tmp.lengthSq() > 0.01) b.fwd.copy(tmp.normalize()); }
+      if (b.u >= 1) { b.mode = 'rest'; b.t = 10 + Math.random() * 14; } }
+    else if (b.mode === 'rest') { b.t -= dt; b.flap += (0.1 - b.flap) * (1 - Math.exp(-dt * 2)); b.up.copy(b.spot.n); b.pos.copy(b.land).add(sway(b.host, b.land.y, off));
+      tmp.copy(b.fwd).addScaledVector(b.up, -b.fwd.dot(b.up)).normalize(); b.fwd.copy(tmp);
+      if (b.t <= 0 && !gliderNext(b)) b.t = 4; }
+    set(b, 'uFlap', b.flap); basisQuat(b.fwd, b.up, b.qWant);
+  }
+  function start(b) {
+    if (b.role === 'glider') { b.root.visible = gliderNext(b); if (b.root.visible) { b.curve.getPointAt(0, b.pos); b.curve.getTangentAt(0, b.fwd); basisQuat(b.fwd, Y, b.q); } return; }
+    b.pos.copy(enter(b)); b.root.visible = true;
+    if (b.role === 'hopper') { b.homeP = ab(b.home[0], b.home[1]); b.path = W.findPath(b.pos, b.homeP, b.rad); b.seg = 0; b.mode = 'sit'; b.t = 0; if (b.path) b.pos.copy(b.path[0]); }
+    else { b.pos.copy(W.findPath(b.pos, new THREE.Vector3(0, 0, 3), b.rad)?.[0] || b.pos); crawlerNext(b); }
+    if (b.path) { b.fwd.subVectors(b.path[1] || b.pos, b.pos).setY(0).normalize(); basisQuat(b.fwd, Y, b.q); }
+  }
+  const api = {
+    list,
+    reset() { for (const b of list) { b.mode = 'wait'; b.root.visible = false; b.host = -1; b.path = null; b.walk = 0; } for (const k in busy) busy[k] = null; for (const k in top) top[k] = null; },
+    /** anything touching a fungus it is not standing on (for the checks; should always be empty) */
+    clashes() { const out = []; for (const b of list) { if (!b.root.visible) continue; tmp2.copy(b.pos).addScaledVector(b.up, 0.3); const h = W.hit(tmp2, 0.2, b.host); if (h >= 0 && h !== b.last && h !== b.prev) out.push([b.n, b.mode, h, fungi[h].species, +b.pos.x.toFixed(2), +b.pos.y.toFixed(2), +b.pos.z.toFixed(2)]); } return out; },
     update(dt, time) {
-      TIME.value = time; camera.getWorldDirection(camDir);
+      TIME.value = time;
       for (const b of list) {
-        if (time < b.arrive) { b.root.visible = false; continue; }
-        b.root.visible = true; b.grow = Math.min(1, b.grow + dt / 2.5); b.t += dt;
-        d.subVectors(b.pos, camera.position).normalize(); const gz = clamp((d.dot(camDir) - 0.94) / 0.05, 0, 1); b.look += (gz - b.look) * (1 - Math.exp(-dt * 3));
-        toCam.subVectors(camera.position, b.pos); const yawTo = Math.atan2(toCam.x, toCam.z); let want = b.yawNow, calm = 0, bank = 0;
-        const R = b.role;
-        if (R === 'watcher') { let dy = yawTo - b.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); want = b.yaw + dy * (0.25 + 0.6 * smooth(0.1, 0.8, b.look)); calm = b.look; }
-        else if (R === 'shy') { d.set(b.home.x, 0, b.home.z).normalize().multiplyScalar(0.8 * smooth(0.3, 0.9, b.look)); b.target.copy(b.home).add(d);
-          b.pos.lerp(b.target, 1 - Math.exp(-dt * (b.look > 0.3 ? 1.5 : 0.25))); want = yawTo + (b.look > 0.3 ? Math.PI : 0.6 * Math.sin(b.t * 0.2)); }
-        else if (R === 'grazer') { want = b.yaw + 1.2 + 0.45 * Math.sin(b.t * 0.4); b.pos.y = b.home.y + 0.004 * Math.abs(Math.sin(b.t * 2.2)); }
-        else if (R === 'hopper') { b.timer -= dt;
-          if (b.state === 'idle' && b.timer < 0) { b.state = 'hop'; b.hopT = 0; b.from.copy(b.pos); const a = Math.random() * 6.28, r = 0.3 + Math.random() * 0.5; b.target.set(b.home.x + Math.cos(a) * r, 0, b.home.z + Math.sin(a) * r); b.yawNow = Math.atan2(b.target.x - b.pos.x, b.target.z - b.pos.z); }
-          if (b.state === 'hop') { b.hopT += dt / 0.55; const k = clamp(b.hopT, 0, 1); b.pos.lerpVectors(b.from, b.target, k); b.pos.y = Math.sin(Math.PI * k) * 0.3; if (k >= 1) { b.state = 'idle'; b.timer = 1.5 + Math.random() * 4; } }
-          want = b.yawNow; }
-        else if (R === 'glider') { const a = b.t * 0.22 + b.phase, rr = b.r * (1 + 0.18 * Math.sin(b.t * 0.07));
-          b.pos.set(b.home.x + Math.cos(a) * rr, b.home.y + 0.5 * Math.sin(b.t * 0.31), b.home.z + Math.sin(a) * rr); want = Math.atan2(-Math.sin(a), Math.cos(a)); bank = 0.3; }
-        d.subVectors(b.pos, camera.position); if (d.length() < 1.0) b.pos.copy(camera.position).addScaledVector(d.normalize(), 1.0);      // never inside arm's length
-        let dy = want - b.yawNow; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); if (R !== 'hopper') b.yawNow += dy * (1 - Math.exp(-dt * 2.5));
-        b.root.position.copy(b.pos); b.root.rotation.set(0, b.yawNow, bank, 'YXZ'); b.root.scale.setScalar(b.s * smooth(0, 1, b.grow));
-        for (const m of b.mats) m.userData.u.uCalm.value = calm;
+        if (b.mode === 'wait') { if (time < b.arrive) continue; start(b); if (b.mode === 'wait') { b.arrive = time + 3; continue; } }
+        if (b.host >= 0 && !grown(b.host)) { api.reset(); return; }
+        if (b.role === 'crawler') crawler(b, dt); else if (b.role === 'hopper') hopper(b, dt); else glider(b, dt);
+        b.q.slerp(b.qWant, 1 - Math.exp(-dt * (b.role === 'glider' ? 4 : 7)));
+        b.root.position.copy(b.pos); b.root.quaternion.copy(b.q);
+        set(b, 'uGait', b.gait); set(b, 'uWalk', b.walk); set(b, 'uCalm', b.mode === 'pause' || b.mode === 'perch' ? 0.6 : 0);
       }
     },
   };
+  return api;
 }

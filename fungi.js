@@ -215,10 +215,10 @@ export class Fungus {
       if (this.t >= this.restFor) { this.state = 'grow'; this.t = 0; this.root.visible = true; this.firstShed = false; this.splitAt = 5 + Math.random() * 14; this.lifeFor = 45 + Math.random() * 120; }      // it comes back in the same place and at the same angle, so nothing ever grows into its neighbour
     }
     if (this.state === 'grown') {
-      if (!this.isPuff && this.t > this.lifeFor) { this.state = 'wilt'; this.t = 0; this.flexT = -1; if (spores) spores.shed(this, 120); return; }
+      if (!this.isPuff && !this.keep && this.t > this.lifeFor) { this.state = 'wilt'; this.t = 0; this.flexT = -1; if (spores) spores.shed(this, 120); return; }
       // now and then the cap draws itself half shut and opens again, like a slow breath
       this.nextFlex -= dt;
-      if (this.nextFlex <= 0 && this.flexT < 0) { this.flexT = 0; this.nextFlex = 9 + Math.random() * 16; }
+      if (this.nextFlex <= 0 && this.flexT < 0 && !this.keep) { this.flexT = 0; this.nextFlex = 9 + Math.random() * 16; }
       if (this.flexT >= 0) { this.flexT += dt; const k = this.flexT / 5.5, dip = Math.sin(Math.min(1, k) * Math.PI) ** 2;
         if (this.meta.seat) U.uOpen.value = 1 - 0.3 * dip; else U.uGrow.value = 1 - 0.07 * dip;
         if (k > 0.5 && !this.flexShed) { this.flexShed = true; if (spores) spores.shed(this, 35); }
