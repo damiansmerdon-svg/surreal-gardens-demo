@@ -41,6 +41,8 @@ button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--ac
 #intro p{margin:0 0 10px;line-height:1.5;color:#e6e3d8;font-size:16px}
 #intro .small{font-size:13px;color:var(--muted)}
 #intro .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+#offline{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+#offline button{padding:10px 14px}
 #intro .actions button{padding:14px 20px;font-size:16px}
 
 /* map */
@@ -93,6 +95,8 @@ button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--ac
     <p>A short walk from the Goodman Building to the stepping stones in the First Creek Wetland. When you get there, hold up your phone: fungi push up out of the ground beside the stones, giants rise and lean over you, and spores drift in the light.</p>
     <p class="small">About 150 m, two minutes on foot. Real and surreal, never cute: they grow, open, shed, tear and sink back into the ground.</p>
     <div class="actions"><button class="primary" id="goMap">Start the walk</button><button id="goPreview">Skip to the mushrooms</button></div>
+    <div id="offline" hidden><button id="saveBtn">Save to this phone</button><span id="saveMsg" class="small"></span></div>
+    <p class="small" id="ver"></p>
   </div>
 </section>
 
@@ -131,8 +135,8 @@ button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--ac
 
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
 } }
 </script>
 <script type="module">
@@ -156,6 +160,31 @@ $('goAR').onclick = () => openScene('cam');
 $('goPano').onclick = () => openScene('pano');
 $('bMap').onclick = () => { if (scene) scene.pause(true); show('map'); };
 window.__show = show;
+
+// Saving the whole walk on the phone, so it opens with no signal (Damian, 26 Nov 2026: "saved to my phone so I know it works in
+// the demo"). sw.js answers every request from the saved copy; this button fetches everything now and shows how far it has got.
+(async () => {
+  if (!('serviceWorker' in navigator) || !('caches' in window)) return;
+  let reg; try { reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }); } catch (e) { return; }
+  // a new version is picked up by itself: checked each time the app opens or comes back to the front, and the first screen reloads onto it
+  const had = !!navigator.serviceWorker.controller; reg.update().catch(() => {});
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && current === 'intro' && !scene) location.reload(); else status(); });
+  const box = $('offline'), btn = $('saveBtn'), msg = $('saveMsg'); box.hidden = false;
+  const MB = b => (b / 1048576).toFixed(0);
+  async function look() { const D = await (await fetch('./files.json', { cache: 'no-store' })).json(), F = D.files; $('ver').textContent = 'Version ' + D.built;
+    const c = await caches.open('mushroom-walk'), missing = []; let total = 0;
+    for (const [p, [h, size]] of Object.entries(F)) { total += size; if (!(await c.match(p + '?h=' + h))) missing.push([p, h, size]); } return { c, missing, total }; }
+  async function status() { try { const s = await look(); if (!s.missing.length) { btn.hidden = true; msg.textContent = 'Saved on this phone. It will open with no signal.'; } else { btn.hidden = false; btn.disabled = false; msg.textContent = navigator.onLine === false ? 'Not saved yet, and there is no signal.' : MB(s.missing.reduce((a, m) => a + m[2], 0)) + ' MB to save. Best done on wifi.'; } return s; } catch (e) { msg.textContent = ''; return null; } }
+  btn.onclick = async () => { btn.disabled = true; let s; try { s = await look(); } catch (e) { msg.textContent = 'Could not reach the site. Try again with signal.'; btn.disabled = false; return; }
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    let done = s.total - s.missing.reduce((a, m) => a + m[2], 0), failed = 0;
+    for (const [p, h, size] of s.missing) { msg.textContent = 'Saving: ' + MB(done) + ' of ' + MB(s.total) + ' MB'; 
+      try { const r = await fetch(p, { cache: 'no-store' }); if (!r.ok) throw 0; await s.c.put(p + '?h=' + h, r); done += size; } catch (e) { failed++; } }
+    if (!failed) await s.c.put('__saved', new Response('1'));
+    const after = await status(); if (failed && after) msg.textContent = failed + ' files did not save (' + (after.missing.length) + ' missing). Tap again with a good connection.'; };
+  status(); addEventListener('online', status); addEventListener('offline', status);
+})();
 
 let motionAsked = null;
 function askMotion() {
