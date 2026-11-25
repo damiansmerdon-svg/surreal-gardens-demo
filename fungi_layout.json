@@ -1,0 +1,325 @@
+{
+"frame": "adelaide-wetland: x east, z south, metres from the photo spot",
+"items": [
+{
+"species": "Gobletcup",
+"a": 2.2,
+"b": -1.8,
+"x": 0.77,
+"z": -2.736,
+"scale": 0.55,
+"yaw": 116.6,
+"start": 0.5
+},
+{
+"species": "Sporebloom",
+"a": 1.6,
+"b": 1.9,
+"x": 2.4,
+"z": 0.639,
+"scale": 0.6,
+"yaw": 54.3,
+"start": 2.0
+},
+{
+"species": "Glassbonnets",
+"a": -2.0,
+"b": 1.9,
+"x": 0.074,
+"z": 2.758,
+"scale": 0.55,
+"yaw": 234.3,
+"start": 3.2
+},
+{
+"species": "Puffballs",
+"a": 3.8,
+"b": 2.3,
+"x": 4.432,
+"z": -0.296,
+"scale": 1.1,
+"yaw": 26.1,
+"start": 4.5
+},
+{
+"species": "Silkcap",
+"a": -1.8,
+"b": -1.9,
+"x": -2.616,
+"z": 0.066,
+"scale": 0.6,
+"yaw": 192.9,
+"start": 5.5
+},
+{
+"species": "Sporebloom",
+"a": -3.4,
+"b": -1.6,
+"x": -3.464,
+"z": 1.456,
+"scale": 0.75,
+"yaw": 131.6,
+"start": 7.0
+},
+{
+"species": "Gobletcup",
+"a": 5.0,
+"b": -1.7,
+"x": 3.121,
+"z": -4.26,
+"scale": 0.8,
+"yaw": 20.9,
+"start": 8.5
+},
+{
+"species": "Glassbonnets",
+"a": 4.4,
+"b": 2.3,
+"x": 4.923,
+"z": -0.64,
+"scale": 0.7,
+"yaw": 182.7,
+"start": 10.0
+},
+{
+"species": "Puffballs",
+"a": -4.2,
+"b": 2.1,
+"x": -1.25,
+"z": 4.526,
+"scale": 0.9,
+"yaw": 13.5,
+"start": 11.5
+},
+{
+"species": "Veilspire_Tattered",
+"a": 3.0,
+"b": 3.0,
+"x": 4.178,
+"z": 0.737,
+"scale": 0.78,
+"yaw": 123.1,
+"start": 16.0
+},
+{
+"species": "Lanternveil",
+"a": 5.5,
+"b": -2.9,
+"x": 2.842,
+"z": -5.53,
+"scale": 0.85,
+"yaw": 293.0,
+"start": 21.0
+},
+{
+"species": "VioletFlare",
+"a": -2.6,
+"b": 3.3,
+"x": 0.713,
+"z": 4.14,
+"scale": 0.72,
+"yaw": 126.5,
+"start": 26.0
+},
+{
+"species": "Veilspire_Curtain",
+"a": -4.6,
+"b": -3.3,
+"x": -5.53,
+"z": 1.21,
+"scale": 0.75,
+"yaw": 315.9,
+"start": 31.0
+},
+{
+"species": "Inkweeper",
+"a": 8.5,
+"b": 3.6,
+"x": 9.028,
+"z": -1.926,
+"scale": 0.8,
+"yaw": 134.2,
+"start": 36.0
+},
+{
+"species": "Veilspire",
+"a": 9.5,
+"b": -3.4,
+"x": 5.832,
+"z": -8.234,
+"scale": 0.85,
+"yaw": 294.5,
+"start": 40.0
+},
+{
+"species": "Lanternveil_Airy",
+"a": -7.5,
+"b": 3.4,
+"x": -2.492,
+"z": 7.849,
+"scale": 0.85,
+"yaw": 130.3,
+"start": 44.0
+},
+{
+"species": "EmberDome",
+"a": -0.5,
+"b": -4.4,
+"x": -3.604,
+"z": -2.573,
+"scale": 0.62,
+"yaw": 321.6,
+"start": 48.0
+},
+{
+"species": "Bruisecap",
+"a": 0.8,
+"b": 4.6,
+"x": 3.294,
+"z": 3.309,
+"scale": 0.6,
+"yaw": 137.5,
+"start": 52.0
+},
+{
+"species": "Drifterbells",
+"a": 6.8,
+"b": 4.6,
+"x": 8.209,
+"z": -0.132,
+"scale": 0.75,
+"yaw": 207.8,
+"start": 56.0
+},
+{
+"species": "Drifterbells",
+"a": -5.8,
+"b": 4.9,
+"x": -0.24,
+"z": 7.589,
+"scale": 0.8,
+"yaw": 142.8,
+"start": 57.6
+},
+{
+"species": "Drifterbells",
+"a": 11.5,
+"b": 2.4,
+"x": 10.797,
+"z": -4.63,
+"scale": 0.9,
+"yaw": 351.5,
+"start": 59.2
+},
+{
+"species": "Silkcap",
+"a": 7.0,
+"b": -1.9,
+"x": 4.644,
+"z": -5.571,
+"scale": 0.8,
+"yaw": 16.8,
+"start": 60.8
+},
+{
+"species": "Silkcap",
+"a": -6.4,
+"b": -2.0,
+"x": -5.769,
+"z": 3.418,
+"scale": 0.75,
+"yaw": 309.0,
+"start": 62.4
+},
+{
+"species": "Silkcap",
+"a": 12.0,
+"b": -2.2,
+"x": 8.568,
+"z": -8.685,
+"scale": 0.9,
+"yaw": 104.3,
+"start": 64.0
+},
+{
+"species": "JadeNodders",
+"a": 2.2,
+"b": -3.1,
+"x": 0.024,
+"z": -3.801,
+"scale": 0.7,
+"yaw": 51.9,
+"start": 65.6
+},
+{
+"species": "JadeNodders",
+"a": -8.8,
+"b": -2.6,
+"x": -7.821,
+"z": 4.8,
+"scale": 0.75,
+"yaw": 42.4,
+"start": 67.2
+},
+{
+"species": "Sporebloom",
+"a": 10.4,
+"b": 1.9,
+"x": 9.609,
+"z": -4.409,
+"scale": 0.9,
+"yaw": 111.1,
+"start": 68.8
+},
+{
+"species": "Sporebloom",
+"a": -9.6,
+"b": 1.9,
+"x": -5.012,
+"z": 8.406,
+"scale": 0.85,
+"yaw": 293.8,
+"start": 70.4
+},
+{
+"species": "Gobletcup",
+"a": 13.5,
+"b": 1.9,
+"x": 12.148,
+"z": -6.187,
+"scale": 1.0,
+"yaw": 65.1,
+"start": 72.0
+},
+{
+"species": "Glassbonnets",
+"a": -1.0,
+"b": 2.4,
+"x": 1.114,
+"z": 2.349,
+"scale": 0.6,
+"yaw": 209.4,
+"start": 73.6
+},
+{
+"species": "Puffballs",
+"a": 8.0,
+"b": -1.6,
+"x": 5.635,
+"z": -5.899,
+"scale": 0.8,
+"yaw": 230.0,
+"start": 75.2
+},
+{
+"species": "Gobletcup",
+"a": -10.5,
+"b": -1.9,
+"x": -8.438,
+"z": 6.532,
+"scale": 0.9,
+"yaw": 134.1,
+"start": 76.8
+}
+]
+}

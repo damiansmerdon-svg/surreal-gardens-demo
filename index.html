@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mushroom Walk">
+<meta name="theme-color" content="#11150d">
+<title>Mushroom Walk</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Mushroom Walk: a three-screen phone demo. Intro, a map from the Goodman Building, then the fungus forest on the real wetland path.
+   Layout: each screen fills the viewport; only one is shown. Scene controls sit in one strip pinned to the bottom. */
+:root{
+  --bg:#11150d; --bg2:#1a2014; --fg:#f2efe6; --muted:#b9bca9; --line:rgba(255,255,255,.16); --panel:rgba(17,21,13,.82);
+  --accent:#f0d9a0; --accent-ink:#2b2008; --route:#f0b860; --water:#3d5f6e; --wet:#2f4a35; --green:#26341f; --bldg:#4a4436; --path:#cbbf9f; --road:#6c6857;
+  --display:"Fraunces",Georgia,serif; --body:"Inter",system-ui,-apple-system,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column}
+button{font:inherit;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;touch-action:manipulation}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.safe{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+
+/* intro */
+#intro{background:#0c0f09}
+#intro .hero{position:absolute;inset:0;background:url(hero.jpg) center/cover no-repeat}
+#intro .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,12,8,.55) 0%,rgba(10,12,8,.1) 30%,rgba(10,12,8,.25) 55%,rgba(10,12,8,.92) 82%)}
+#intro .top{position:relative;padding-top:calc(18px + env(safe-area-inset-top))}
+#intro .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+#intro .body{position:relative;margin-top:auto;padding-bottom:calc(22px + env(safe-area-inset-bottom));max-width:560px}
+#intro h1{font-family:var(--display);font-weight:400;font-size:clamp(40px,11vw,64px);line-height:1;margin:0 0 12px}
+#intro p{margin:0 0 10px;line-height:1.5;color:#e6e3d8;font-size:16px}
+#intro .small{font-size:13px;color:var(--muted)}
+#intro .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+#intro .actions button{padding:14px 20px;font-size:16px}
+
+/* map */
+#map{background:var(--bg)}
+#map header{padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+#map header h2{font-family:var(--display);font-weight:400;font-size:22px;margin:0;flex:1}
+#map header button{padding:6px 10px;font-size:14px}
+#mapwrap{flex:1;position:relative;min-height:0}
+#mapsvg{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;background:#1c2417}
+#mapsvg text{font-family:var(--body);paint-order:stroke;stroke:#1c2417;stroke-width:3px;stroke-linejoin:round}
+#gps{position:absolute;left:12px;top:12px;right:12px;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--muted)}
+#map footer{padding-top:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--bg)}
+#map footer p{margin:0 0 10px;font-size:14px;line-height:1.45;color:#dcd9cd}
+#map footer .actions{display:flex;gap:8px;flex-wrap:wrap}
+#map footer .actions button{flex:1 1 140px}
+
+/* scene */
+#scene{background:#000}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#stop{position:absolute;top:0;left:0;right:0;padding-top:calc(10px + env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:flex-start;gap:10px;pointer-events:none}
+#stop h2{font-family:var(--display);font-weight:400;font-size:20px;margin:0;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+#hint{font-size:13px;margin-top:2px;text-shadow:0 1px 4px rgba(0,0,0,.9);opacity:.92;max-width:40ch}
+#beat{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--panel);border:1px solid var(--line);padding:6px 9px;border-radius:999px;text-align:right;max-width:46vw}
+#bar{position:absolute;left:0;right:0;bottom:0;padding-top:28px;padding-bottom:calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(6,8,5,.82) 45%);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#bar .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+#bar .seg button{border:0;border-radius:0;padding:9px 12px}
+#bar > button{background:var(--panel);padding:9px 12px;font-size:14px}
+#bar .seg button{font-size:14px}
+#bar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+#bar input[type=range]{width:90px;accent-color:var(--accent)}
+#note{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:min(88vw,420px);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;font-size:14px;line-height:1.5;text-align:center}
+#note button{margin-top:10px}
+#load{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:5;text-align:center;padding:24px}
+#load .t{font-family:var(--display);font-size:24px;margin-bottom:8px}
+#load .m{color:var(--muted);font-size:14px}
+#load .bar{width:min(70vw,280px);height:4px;background:var(--line);border-radius:4px;margin:14px auto 0;overflow:hidden}
+#load .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+#load .err{color:#f0a070;max-width:50ch;margin-top:12px;font-size:13px}
+@media (min-width:900px){ #intro .body{margin-left:6vw;margin-bottom:6vh} }
+</style>
+</head>
+<body>
+
+<section id="intro" class="screen">
+  <div class="hero"></div>
+  <div class="top safe"><div class="kicker">Surreal Gardens · Adelaide Botanic Garden</div></div>
+  <div class="body safe">
+    <h1>Mushroom Walk</h1>
+    <p>A short walk from the Goodman Building to the stepping stones in the First Creek Wetland. When you get there, hold up your phone: fungi push up out of the ground beside the stones, giants rise and lean over you, and spores drift in the light.</p>
+    <p class="small">About 150 m, two minutes on foot. Real and surreal, never cute: they grow, open, shed, tear and sink back into the ground.</p>
+    <div class="actions"><button class="primary" id="goMap">Start the walk</button><button id="goPreview">Skip to the mushrooms</button></div>
+  </div>
+</section>
+
+<section id="map" class="screen" hidden>
+  <header class="safe"><button id="mapBack" aria-label="Back to the intro">‹ Back</button><h2>To the mushroom path</h2></header>
+  <div id="mapwrap">
+    <svg id="mapsvg" role="img" aria-label="Map of the walk from the Goodman Building to the stepping stones in the First Creek Wetland"></svg>
+    <div id="gps">Finding where you are…</div>
+  </div>
+  <footer class="safe">
+    <p id="mapText">Leave the Goodman Building by the garden side, follow the edge of the Kitchen Garden, and step onto the stones into the wetland. Stop where the marker is.</p>
+    <div class="actions"><button class="primary" id="goAR">I'm there: start</button><button id="goPano">Show me from here</button></div>
+  </footer>
+</section>
+
+<section id="scene" class="screen" hidden>
+  <video id="cam" playsinline muted autoplay hidden></video>
+  <canvas id="view"></canvas>
+  <div id="stop" class="safe">
+    <div><h2>The mushroom path</h2><div id="hint"></div></div>
+    <div id="beat">loading</div>
+  </div>
+  <div id="bar" class="safe">
+    <div class="seg" role="group" aria-label="What you see behind the fungi"><button id="mPano" class="on">360 photo</button><button id="mCam">Camera</button></div>
+    <button id="bAgain">Start again</button>
+    <button id="bSpore">Spores</button>
+    <button id="bFish">Fish</button>
+    <label>Size <input id="scale" type="range" min="0.5" max="1.5" step="0.05" value="1"></label>
+    <button id="bMap">Map</button>
+  </div>
+  <div id="note" hidden><div id="noteText"></div><button id="noteOk">OK</button></div>
+  <div id="load"><div><div class="t">The mushroom path</div><div class="m" id="loadMsg">Loading the wetland and the fungi…</div><div class="bar"><i id="loadBar"></i></div><div class="err" id="loadErr" hidden></div></div></div>
+</section>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as MAP from './map_data.js';
+const $ = id => document.getElementById(id);
+const screens = { intro: $('intro'), map: $('map'), scene: $('scene') };
+let current = 'intro';
+function show(name) { for (const [k, el] of Object.entries(screens)) el.hidden = k !== name; current = name; if (name === 'map') startGPS(); else stopGPS(); }
+let scene = null;      // loaded on first visit
+async function openScene(mode) {
+  show('scene');
+  // iOS asks for motion access only from a tap, so ask here, on the button that brought us
+  await askMotion();
+  if (!scene) scene = await import('./scene.js').then(m => m.start());
+  if (scene) scene.setMode(mode);
+}
+$('goMap').onclick = () => show('map');
+$('goPreview').onclick = () => openScene('pano');
+$('mapBack').onclick = () => show('intro');
+$('goAR').onclick = () => openScene('cam');
+$('goPano').onclick = () => openScene('pano');
+$('bMap').onclick = () => { if (scene) scene.pause(true); show('map'); };
+window.__show = show;
+
+let motionAsked = null;
+function askMotion() {
+  if (motionAsked) return motionAsked;
+  const D = window.DeviceOrientationEvent;
+  motionAsked = (D && typeof D.requestPermission === 'function') ? D.requestPermission().then(r => r === 'granted').catch(() => false) : Promise.resolve(!!D);
+  window.__motion = motionAsked;
+  return motionAsked;
+}
+
+// ---------- map ----------
+const NS = 'http://www.w3.org/2000/svg';
+const svg = $('mapsvg');
+const KX = 0.913, KY = 1.11;                          // metres per map unit (east, south)
+const P = s => s.split(' ').map(q => q.split(',').map(Number));
+const mx = p => p[0] * KX, my = p => p[1] * KY;     // map unit -> metres
+function el(tag, attrs, parent = svg) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; }
+function path(pts, close) { return pts.map((p, i) => (i ? 'L' : 'M') + mx(p).toFixed(1) + ' ' + my(p).toFixed(1)).join('') + (close ? 'Z' : ''); }
+const FILL = { g: 'var(--green)', m: 'var(--wet)', w: 'var(--water)', b: 'var(--bldg)' };
+function drawMap() {
+  svg.innerHTML = '';
+  const root = el('g', { id: 'mroot' });
+  el('rect', { x: 0, y: 0, width: 800, height: 1200, fill: '#1c2417' }, root);
+  for (const [k, name, s] of MAP.AREAS) {
+    const a = el('path', { d: path(P(s), true), fill: FILL[k], stroke: k === 'b' ? '#6b6250' : 'none', 'stroke-width': 0.6 }, root);
+    if (name === 'Goodman Building') { a.setAttribute('fill', '#7a5a3c'); a.setAttribute('stroke', 'var(--accent)'); a.setAttribute('stroke-width', 1.2); }
+  }
+  for (const [k, name, s] of MAP.LINES) {
+    const st = k === 'r' ? ['var(--road)', 6] : k === 's' ? ['#57543f', 3] : k === 'c' ? ['#41687a', 2.2] : ['var(--path)', 1.4];
+    el('path', { d: path(P(s)), fill: 'none', stroke: st[0], 'stroke-width': st[1], 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: k === 'f' ? 0.7 : 1 }, root);
+  }
+  // the route
+  el('path', { d: path(MAP.ROUTE), fill: 'none', stroke: '#000', 'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.35 }, root);
+  el('path', { d: path(MAP.ROUTE), fill: 'none', stroke: 'var(--route)', 'stroke-width': 3, 'stroke-dasharray': '1 5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, root);
+  for (const [t, x, y] of MAP.LABELS) {
+    const lab = el('text', { x: mx([x]), y: my([0, y]), 'text-anchor': 'middle', 'font-size': 6.5, fill: '#d8d4c4' }, root); lab.textContent = t;
+  }
+  // start and stop markers
+  const s = MAP.START, e = MAP.SPOT;
+  el('circle', { cx: mx(s), cy: my(s), r: 4.5, fill: 'var(--accent)', stroke: '#1c2417', 'stroke-width': 1.5 }, root);
+  const st = el('text', { x: mx(s) + 7, y: my(s) + 2, 'font-size': 7, fill: 'var(--accent)', 'font-weight': 600 }, root); st.textContent = 'Start';
+  const pin = el('g', { transform: `translate(${mx(e)} ${my(e)})` }, root);
+  el('path', { d: 'M0 0 C-6 -8 -9 -12 -9 -17 A9 9 0 1 1 9 -17 C9 -12 6 -8 0 0Z', fill: '#e86f5a', stroke: '#1c2417', 'stroke-width': 1.5 }, pin);
+  el('path', { d: 'M-5.5 -16 Q0 -23 5.5 -16 Z', fill: '#f6efe0' }, pin); el('rect', { x: -1.3, y: -16, width: 2.6, height: 5, fill: '#f6efe0' }, pin);
+  const en = el('text', { x: mx(e) + 2, y: my(e) + 11, 'font-size': 7, fill: '#ffb3a3', 'font-weight': 600, 'text-anchor': 'middle' }, root); en.textContent = 'Mushroom path';
+  // north arrow + scale
+  const ov = el('g', { id: 'mover' });
+  youG = el('g', { id: 'you', visibility: 'hidden' }, root);
+  youAcc = el('circle', { r: 10, fill: 'rgba(90,170,255,.18)', stroke: 'rgba(90,170,255,.6)', 'stroke-width': 0.8 }, youG);
+  el('circle', { r: 3.6, fill: '#4aa3ff', stroke: '#fff', 'stroke-width': 1.4 }, youG);
+  fitView();
+}
+let youG, youAcc, view = { x: 0, y: 0, w: 1, h: 1 };
+function fitView() {
+  const r = svg.getBoundingClientRect(); const W = r.width || 360, H = r.height || 500;
+  // frame the route with room around it
+  const xs = MAP.ROUTE.map(mx).concat([mx([200]), mx([410])]), ys = MAP.ROUTE.map(my).concat([my([0, 700]), my([0, 850])]);
+  let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 + 6; let w = (x1 - x0) * 1.15, h = (y1 - y0) * 1.15;
+  if (w / h > W / H) h = w * H / W; else w = h * W / H;
+  view = { x: cx - w / 2, y: cy - h / 2, w, h }; applyView();
+}
+function applyView() { svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`); }
+// pan and pinch
+{
+  const pts = new Map(); let last = null;
+  svg.addEventListener('pointerdown', e => { svg.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); last = null; });
+  svg.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, [e.clientX, e.clientY]);
+    const r = svg.getBoundingClientRect(), k = view.w / r.width, arr = [...pts.values()];
+    const c = arr.reduce((a, p) => [a[0] + p[0] / arr.length, a[1] + p[1] / arr.length], [0, 0]);
+    const d = arr.length > 1 ? Math.hypot(arr[0][0] - arr[1][0], arr[0][1] - arr[1][1]) : 0;
+    if (last && last.n === arr.length) {
+      view.x -= (c[0] - last.c[0]) * k; view.y -= (c[1] - last.c[1]) * k;
+      if (d && last.d) { const s = Math.min(3, Math.max(0.33, last.d / d)); const px = view.x + (c[0] - r.left) * k, py = view.y + (c[1] - r.top) * k;
+        const nw = Math.min(900, Math.max(60, view.w * s)), f = nw / view.w; view.x = px - (px - view.x) * f; view.y = py - (py - view.y) * f; view.w = nw; view.h *= f; }
+      applyView();
+    }
+    last = { c, d, n: arr.length };
+  });
+  const up = e => { pts.delete(e.pointerId); last = null; };
+  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+  svg.addEventListener('wheel', e => { e.preventDefault(); const r = svg.getBoundingClientRect(), k = view.w / r.width, px = view.x + (e.clientX - r.left) * k, py = view.y + (e.clientY - r.top) * k, f = Math.exp(e.deltaY * 0.0015);
+    view.x = px - (px - view.x) * f; view.y = py - (py - view.y) * f; view.w *= f; view.h *= f; applyView(); }, { passive: false });
+}
+addEventListener('resize', () => { if (current === 'map') fitView(); });
+// where you are
+let watch = null;
+function startGPS() {
+  if (!svg.firstChild) drawMap(); else fitView();
+  const g = $('gps');
+  if (!navigator.geolocation) { g.textContent = 'This browser cannot tell where you are. Follow the dotted line from the Goodman Building.'; return; }
+  if (watch !== null) return;
+  watch = navigator.geolocation.watchPosition(p => {
+    const { latitude: la, longitude: lo, accuracy: acc } = p.coords;
+    const u = [(lo - MAP.ORIGIN.lon) * 1e5, (MAP.ORIGIN.lat - la) * 1e5];
+    youG.setAttribute('visibility', 'visible'); youG.setAttribute('transform', `translate(${mx(u)} ${my(u)})`); youAcc.setAttribute('r', Math.min(60, acc));
+    const d = Math.hypot((u[0] - MAP.SPOT[0]) * KX, (u[1] - MAP.SPOT[1]) * KY);
+    if (d > 2000) g.textContent = `You are ${(d / 1000).toFixed(1)} km away. The walk starts at the Goodman Building, Adelaide Botanic Garden.`;
+    else if (d > 12) g.textContent = `${Math.round(d)} m to the mushroom path (location good to about ${Math.round(acc)} m).`;
+    else g.textContent = 'You are at the mushroom path. Tap "I\'m there: start".';
+    $('goAR').classList.toggle('primary', true);
+  }, err => {
+    g.textContent = err.code === 1 ? 'Location is switched off for this page, so just follow the dotted line from the Goodman Building.' : 'Could not get your location yet. Follow the dotted line from the Goodman Building.';
+  }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 });
+}
+function stopGPS() { if (watch !== null) { navigator.geolocation.clearWatch(watch); watch = null; } }
+if (location.hash === '#map') show('map'); else if (location.hash === '#scene') openScene('pano');
+</script>
+</body>
+</html>
