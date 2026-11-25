@@ -206,7 +206,11 @@ let scatter = 0;
 setupJaw(); try { buildTeeth(); } catch (e) {}
 
 // ---- the path. World: x east, y up, z south. The boardwalk is about 30 m north across the pond.
-const pts = [[-5, -9, -37], [-5, -2, -36.5], [-4.6, 5, -35.5], [-3.5, 9.5, -32], [-2.2, 9.0, -26], [-1.2, 5.6, -19], [-0.6, 3.6, -12], [-1.6, 3.3, -6.5], [-5.0, 3.9, -3.6], [-9.0, 4.6, -6], [-12.5, 5.4, -13], [-13.0, 7.2, -22], [-11.5, 8.6, -30], [-10.0, 6.0, -35.5], [-9.6, -1, -37.5], [-9.6, -12, -38]].map(p => new THREE.Vector3(...p));
+// Damian, 25 Nov: "fly over the other side of the path and go around a bit too... we don't see it much": after it reaches you it
+// crosses the stones, circles right round you above the caps, makes a second low pass over the pond in front, then goes home.
+const pts = [[-5, -9, -37], [-5, -2, -36.5], [-4.6, 5, -35.5], [-3.5, 9.5, -32], [-2.2, 9.0, -26], [-1.2, 5.6, -19], [-0.6, 3.8, -12], [1.2, 3.6, -6.5],
+  [5.5, 6.2, -2.5], [9.5, 8.2, 3], [8.5, 8.6, 9.5], [2.5, 7.8, 12.5], [-4.5, 6.8, 10.5], [-9.5, 5.6, 5], [-10.5, 4.4, -2], [-7, 3.6, -7.5], [-1.5, 3.3, -8.5], [3.5, 4.2, -11],
+  [5, 6.5, -17], [0.5, 8.5, -23], [-6, 9.2, -27], [-10.5, 8.6, -31], [-10.5, 5.5, -35.5], [-10, -1, -37.5], [-10, -12, -38]].map(p => new THREE.Vector3(...p));
 const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5), LEN = curve.getLength();
 const d0 = curve.getTangentAt(0), d1 = curve.getTangentAt(1);
 function atDist(d, out) {
@@ -251,7 +255,7 @@ function poseSerpent() {
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setIndex(idx);
   const occ = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide })); occ.renderOrder = -5; occ.frustumCulled = false; scene.add(occ); }
 
-const SPEED = 4.6, TOTAL = LEN + length + 4; let active = false;
+const SPEED = 5.6, TOTAL = LEN + length + 4; let active = false;
 serpent.visible = false; serpent.scale.setScalar(scaleMul);
 const head = new THREE.Vector3();
 return {

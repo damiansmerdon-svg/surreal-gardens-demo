@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Fungus, Puffball, Spores, SporeCloud } from './fungi.js';
 import { createFishKit, parseGFM } from './fishkit.js';
 import { createSerpent } from './serpent.js';
+import { createBugs } from './bugs.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -115,8 +116,9 @@ export async function start() {
   // the serpent: up from behind the boardwalk, over the pond to you, and back (it loads after the fungi, so the scene never waits for it)
   let serpent = null, nextSerpent = 75;
   createSerpent({ scene, bin, EYE }).then(s => { serpent = s; if (QS.get('serpent')) { s.start(+QS.get('serpent')); } }).catch(e => { console.warn('serpent', e); });
+  let bugs = null; createBugs({ scene, bin, camera }).then(b => { bugs = b; }).catch(e => { console.warn('bugs', e); });
   let time = 0, paused = false, nextFish = 12, nextWave = 34;
-  function restart() { time = 0; fungi.forEach(s => s.hide()); fish.forEach(o => { o.f.visible = false; }); spores.clear(); cloud.clear(); nextFish = 12; nextWave = 34; nextSerpent = 75; if (serpent) serpent.stop(); }
+  function restart() { time = 0; fungi.forEach(s => s.hide()); fish.forEach(o => { o.f.visible = false; }); spores.clear(); cloud.clear(); nextFish = 12; nextWave = 34; nextSerpent = 75; if (serpent) serpent.stop(); if (bugs) bugs.reset(); }
   restart();
 
   // ---------- looking around ----------
@@ -195,7 +197,7 @@ export async function start() {
   $('scale').oninput = e => { userScale = +e.target.value; fungi.forEach(s => s.root.scale.setScalar(s.item.scale * userScale)); };
 
   function beat() {
-    if (serpent && serpent.active && serpent.head.y > 1) return serpent.head.distanceTo(viewer) < 14 ? 'the serpent is coming over the pond' : 'something is rising behind the boardwalk';
+    if (serpent && serpent.active && serpent.head.y > 1) return serpent.head.distanceTo(viewer) < 16 ? 'the serpent is circling you' : 'something is rising behind the boardwalk';
     if (fish.some(o => o.f.visible)) return 'flying fish, over the boardwalk';
     const up = fungi.filter(s => s.state !== 'hidden' && s.state !== 'rest'), growing = up.filter(s => s.state === 'grow').length, opening = up.filter(s => s.state === 'open').length;
     if (fungi.some(s => s.burst && s.t - s.burstT < 4)) return 'a puffball breathes out its spores';
@@ -228,6 +230,7 @@ export async function start() {
         const above = o.f.position.y > WATER_Y, was = o.wet; o.wet = above ? 1 : -1; o.f.visible = above;
         o.f.lookAt(tmp); o.f.rotateZ(0.3 * air * Math.sin(k * 11 + o.t0)); kit.flap(o.f, time, 0.45 + 0.45 * Math.sin(k * 16 + o.t0 + 1.5), 30); }
       if (serpent) { if (!serpent.active && time > nextSerpent) { serpent.start(); nextSerpent = time + 100 + Math.random() * 40; } serpent.update(dt, time, viewer); }
+      if (bugs) bugs.update(dt, time);
       SUNV.value.copy(SUN_DIR).transformDirection(camera.matrixWorldInverse);
       for (const s of fungi) { if (time > s.startAt) s.begin(); if (s instanceof Puffball) s.update(dt, time, viewer, spores, cloud, fungi); else s.update(dt, time, viewer, spores); }
       if (time > nextWave) { nextWave = time + 16 + Math.random() * 12; const a0 = Math.random() < 0.5 ? -14 : 16;
@@ -244,7 +247,7 @@ export async function start() {
   if (QS.get('fish')) { planFish(time - +QS.get('fish')); nextFish = time + 99; }
   if (QS.get('rec')) { window.__frame = dt => { FIXED = dt; frame(); }; window.__look = (y, p) => { yaw = y; pitch = p; }; frame(); }
   else renderer.setAnimationLoop(frame);
-  window.__serpent = () => serpent; window.ready = true;
+  window.__serpent = () => serpent; window.__bugs = () => bugs; window.ready = true;
   return {
     setMode, pause(v) { paused = v; if (v) stopCamera(); },
   };

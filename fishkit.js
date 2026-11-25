@@ -43,7 +43,12 @@ function finMat(U, kind, seed) {
 export function parseGFM(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), nv = dv.getInt32(4, true), ni = dv.getInt32(8, true);
   const f = new Float32Array(bytes.buffer.slice(bytes.byteOffset + 12, bytes.byteOffset + 12 + nv * 32)), ix = new Uint16Array(bytes.buffer.slice(bytes.byteOffset + 12 + nv * 32, bytes.byteOffset + 12 + nv * 32 + ni * 2));
-  for (let i = 0; i < ni; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; }      // Unity winds its triangles the other way
+  // whichever way the file winds its triangles, make them face the way their normals point
+  { let agree = 0; const P = f, N = f.subarray(nv * 3, nv * 6);
+    for (let i = 0; i < ni; i += 3) { const a = ix[i] * 3, b = ix[i + 1] * 3, c = ix[i + 2] * 3;
+      const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+      agree += Math.sign((uy * vz - uz * vy) * (N[a] + N[b] + N[c]) + (uz * vx - ux * vz) * (N[a + 1] + N[b + 1] + N[c + 1]) + (ux * vy - uy * vx) * (N[a + 2] + N[b + 2] + N[c + 2])); }
+    if (agree < 0) for (let i = 0; i < ni; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(f.subarray(0, nv * 3), 3)); g.setAttribute('normal', new THREE.BufferAttribute(f.subarray(nv * 3, nv * 6), 3)); g.setAttribute('uv', new THREE.BufferAttribute(f.subarray(nv * 6, nv * 8), 2));
   g.setIndex(new THREE.BufferAttribute(ix, 1)); return g;
@@ -72,7 +77,7 @@ export function createFishKit(v2 = null) {
   let bm2 = null, em2 = null;
   if (v2) { for (const t of [v2.albedo, v2.iris]) { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; }
     bm2 = new THREE.MeshPhysicalMaterial({ map: v2.albedo, metalness: 0.25, roughness: 0.38, clearcoat: 0.5, clearcoatRoughness: 0.3, iridescence: 0.3, iridescenceIOR: 1.35, iridescenceThicknessRange: [200, 500], envMapIntensity: 1.0, side: THREE.DoubleSide });
-    em2 = new THREE.MeshPhysicalMaterial({ map: v2.iris, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.3 }); }
+    em2 = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, map: v2.iris, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.3 }); }
 
   function spawn() {
     const seed = Math.random() * 20, wm = finMat(U, 0, seed), vm = finMat(U, 1, seed + 3);
