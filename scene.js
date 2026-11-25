@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Fungus, Puffball, Spores, SporeCloud } from './fungi.js';
 import { createFishKit, parseGFM } from './fishkit.js';
+import { createSerpent } from './serpent.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -93,24 +94,29 @@ export async function start() {
     fishV2 = { body: parseGFM(b), eyes: parseGFM(e), albedo, iris }; } catch (e) { fishV2 = null; }      // falls back to the first fish
   const kit = createFishKit(fishV2), fish = [];
   for (let i = 0; i < 5; i++) { const f = kit.spawn(); f.visible = false; f.scale.multiplyScalar(1.4); scene.add(f); fish.push({ f }); }
-  const WATER_Y = -0.35, OUT = new THREE.Vector3(-3.5, 0, -10.5), IN = new THREE.Vector3(-8.5, 0, -9);
+  // Damian, 25 Nov: the fish come from the far side of the boardwalk and go back over it, so nothing has to meet the water in view
+  const WATER_Y = -2.5;
   function planFish(t0) {
     fish.forEach((o, i) => {
       const s = i % 2 ? 1 : -1, j = (i % 3) - 1;
       const pts = [
-        new THREE.Vector3(OUT.x - 0.6 * j, WATER_Y - 0.8, OUT.z - 2), new THREE.Vector3(OUT.x + 0.4 * j, WATER_Y + 1.2, OUT.z + 0.4 * i),
-        new THREE.Vector3(-1.2 + 0.4 * j, 1.9 + 0.2 * j, -5.5 + 0.3 * i), new THREE.Vector3(s * (0.9 + 0.2 * i), EYE + 0.15 + 0.25 * (i % 3), -1.2),
+        new THREE.Vector3(3 + 0.8 * j, -4, -36 - 0.5 * i), new THREE.Vector3(2.6 + 0.7 * j, 2.6 + 0.3 * j, -34),
+        new THREE.Vector3(1.8 + 0.5 * j, 4.2 + 0.3 * (i % 3), -27), new THREE.Vector3(0.4 + 0.5 * j, 2.6 + 0.2 * j, -16),
+        new THREE.Vector3(-0.8 + 0.4 * j, 2.0 + 0.2 * j, -7), new THREE.Vector3(s * (0.9 + 0.2 * i), EYE + 0.15 + 0.25 * (i % 3), -1.2),
         new THREE.Vector3(s * 1.8, EYE + 1.3, 2.6 + 0.3 * i), new THREE.Vector3(-3.5 - 0.4 * i, EYE + 2.2, 3.2),
-        new THREE.Vector3(-7.5, 2.4, -2 - 0.5 * i), new THREE.Vector3(IN.x + 0.5 * j, WATER_Y + 1.3, IN.z - 1),
-        new THREE.Vector3(IN.x + 0.3 * j, WATER_Y + 0.1, IN.z - 2.2), new THREE.Vector3(IN.x - 0.5, WATER_Y - 0.9, IN.z - 4),
+        new THREE.Vector3(-7.5, 2.8, -3 - 0.5 * i), new THREE.Vector3(-8.5 + 0.5 * j, 2.6, -14),
+        new THREE.Vector3(-8 + 0.6 * j, 4.4 + 0.3 * (i % 3), -27), new THREE.Vector3(-7.5 + 0.6 * j, 2.4, -34), new THREE.Vector3(-7.5 + 0.6 * j, -4, -36.5),
       ];
-      o.curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'); o.t0 = t0 + i * 0.6; o.dur = 12 + (i % 2) * 0.7; o.wet = 0;
+      o.curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'); o.t0 = t0 + i * 0.7; o.dur = 24 + (i % 2) * 1.0; o.wet = 0;
     });
   }
   function splash(p) { for (let k = 0; k < 50; k++) { const a = Math.random() * 6.28, q = Math.random() * 0.5; spores.emit({ x: p.x + Math.cos(a) * q, y: WATER_Y + 0.05 + Math.random() * 0.2, z: p.z + Math.sin(a) * q }, { x: Math.cos(a) * (0.6 + Math.random()), y: 1.5 + Math.random() * 2, z: Math.sin(a) * (0.6 + Math.random()) }, 1.6, [0.85, 0.95, 1.0], 5); } }
 
+  // the serpent: up from behind the boardwalk, over the pond to you, and back (it loads after the fungi, so the scene never waits for it)
+  let serpent = null, nextSerpent = 75;
+  createSerpent({ scene, bin, EYE }).then(s => { serpent = s; if (QS.get('serpent')) { s.start(+QS.get('serpent')); } }).catch(e => { console.warn('serpent', e); });
   let time = 0, paused = false, nextFish = 12, nextWave = 34;
-  function restart() { time = 0; fungi.forEach(s => s.hide()); fish.forEach(o => { o.f.visible = false; }); spores.clear(); cloud.clear(); nextFish = 12; nextWave = 34; }
+  function restart() { time = 0; fungi.forEach(s => s.hide()); fish.forEach(o => { o.f.visible = false; }); spores.clear(); cloud.clear(); nextFish = 12; nextWave = 34; nextSerpent = 75; if (serpent) serpent.stop(); }
   restart();
 
   // ---------- looking around ----------
@@ -184,11 +190,13 @@ export async function start() {
   $('mPano').onclick = () => setMode('pano'); $('mCam').onclick = () => setMode('cam');
   $('bAgain').onclick = () => restart();
   $('bSpore').onclick = () => { for (const s of fungi) { if (s.trigger) s.trigger(0.5); else if (s.state === 'grown') spores.shed(s, 160); } };
+  $('bSerpent').onclick = () => { if (serpent && !serpent.active) { serpent.start(); nextSerpent = time + 120; } };
   $('bFish').onclick = () => { planFish(time + 0.3); nextFish = time + 60; };
   $('scale').oninput = e => { userScale = +e.target.value; fungi.forEach(s => s.root.scale.setScalar(s.item.scale * userScale)); };
 
   function beat() {
-    if (fish.some(o => o.f.visible)) return 'flying fish, up out of the pond';
+    if (serpent && serpent.active && serpent.head.y > 1) return serpent.head.distanceTo(viewer) < 14 ? 'the serpent is coming over the pond' : 'something is rising behind the boardwalk';
+    if (fish.some(o => o.f.visible)) return 'flying fish, over the boardwalk';
     const up = fungi.filter(s => s.state !== 'hidden' && s.state !== 'rest'), growing = up.filter(s => s.state === 'grow').length, opening = up.filter(s => s.state === 'open').length;
     if (fungi.some(s => s.burst && s.t - s.burstT < 4)) return 'a puffball breathes out its spores';
     if (fungi.some(s => s.armed && !s.burst)) return 'a puffball is swelling';
@@ -216,9 +224,10 @@ export async function start() {
       if (time > nextFish) { planFish(time); nextFish = time + 45 + Math.random() * 20; }
       for (const o of fish) { const k = o.curve ? (time - o.t0) / o.dur : -1; if (!(k >= 0 && k <= 1)) { o.f.visible = false; continue; }
         const u = k * k * (3 - 2 * k) * 0.35 + k * 0.65; o.curve.getPoint(u, o.f.position); const air = smooth01((o.f.position.y - WATER_Y) / 1.2);
-        o.f.position.y += 0.16 * air * Math.sin(k * 22 + o.t0); o.curve.getPoint(Math.min(1, u + 0.012), tmp); tmp.y += 0.16 * air * Math.sin((k + 0.012) * 22 + o.t0);
-        const above = o.f.position.y > WATER_Y, was = o.wet; o.wet = above ? 1 : -1; o.f.visible = above; if (was !== 0 && was !== o.wet) splash(o.f.position);
+        o.f.position.y += 0.16 * air * Math.sin(k * 44 + o.t0); o.curve.getPoint(Math.min(1, u + 0.012), tmp); tmp.y += 0.16 * air * Math.sin((k + 0.012) * 44 + o.t0);
+        const above = o.f.position.y > WATER_Y, was = o.wet; o.wet = above ? 1 : -1; o.f.visible = above;
         o.f.lookAt(tmp); o.f.rotateZ(0.3 * air * Math.sin(k * 11 + o.t0)); kit.flap(o.f, time, 0.45 + 0.45 * Math.sin(k * 16 + o.t0 + 1.5), 30); }
+      if (serpent) { if (!serpent.active && time > nextSerpent) { serpent.start(); nextSerpent = time + 100 + Math.random() * 40; } serpent.update(dt, time, viewer); }
       SUNV.value.copy(SUN_DIR).transformDirection(camera.matrixWorldInverse);
       for (const s of fungi) { if (time > s.startAt) s.begin(); if (s instanceof Puffball) s.update(dt, time, viewer, spores, cloud, fungi); else s.update(dt, time, viewer, spores); }
       if (time > nextWave) { nextWave = time + 16 + Math.random() * 12; const a0 = Math.random() < 0.5 ? -14 : 16;
@@ -235,7 +244,7 @@ export async function start() {
   if (QS.get('fish')) { planFish(time - +QS.get('fish')); nextFish = time + 99; }
   if (QS.get('rec')) { window.__frame = dt => { FIXED = dt; frame(); }; window.__look = (y, p) => { yaw = y; pitch = p; }; frame(); }
   else renderer.setAnimationLoop(frame);
-  window.ready = true;
+  window.__serpent = () => serpent; window.ready = true;
   return {
     setMode, pause(v) { paused = v; if (v) stopCamera(); },
   };
