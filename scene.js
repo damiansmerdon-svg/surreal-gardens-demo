@@ -27,7 +27,8 @@ export async function start() {
 
   const canvas = $('view'), video = $('cam');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  const BASE_PR = Math.min(devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.25 : 1.5);
+  renderer.setPixelRatio(BASE_PR);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
   renderer.setClearColor(0x000000, 0);
@@ -132,12 +133,12 @@ export async function start() {
   // drag: yaw/pitch. Phone motion: the device's orientation, turned so north in the world is north in the photo (compass).
   let yaw = THREE.MathUtils.degToRad(-55), pitch = -0.12;   // facing along the stones (bearing 55), a little down
   let headingNudge = 0;                                       // drag left/right while using phone motion to line things up by hand
-  const ori = { on: false, a: 0, b: 0, g: 0, abs: false, compass: null, offset: null, screen: 0 };
+  const ori = { on: false, a: 0, b: 0, g: 0, abs: false, compass: null, acc: 0, offset: null, screen: 0, locked: false, n: 0, s: 0, c: 0 };
   const onOri = e => {
     if (e.alpha == null) return;
     ori.a = e.alpha; ori.b = e.beta; ori.g = e.gamma; ori.on = true;
     if (e.type === 'deviceorientationabsolute' || (e.absolute && !('webkitCompassHeading' in e))) ori.abs = true;
-    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) ori.compass = e.webkitCompassHeading;
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) { ori.compass = e.webkitCompassHeading; ori.acc = typeof e.webkitCompassAccuracy === 'number' ? e.webkitCompassAccuracy : 0; }
   };
   window.__motion?.then(ok => {
     if (!ok) return;
@@ -145,14 +146,21 @@ export async function start() {
   });
   const updScreen = () => { ori.screen = THREE.MathUtils.degToRad((screen.orientation && screen.orientation.angle) || window.orientation || 0); };
   updScreen(); addEventListener('orientationchange', updScreen); screen.orientation?.addEventListener?.('change', updScreen);
-  const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)), qN = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0);
+  const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)), qN = new THREE.Quaternion(), qR = new THREE.Quaternion(), vR = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
   function deviceQuat(out) {
     // alpha: 0 = phone top toward north when it is absolute; three's -z is north here, so no extra turn is needed
     let a = ori.a;
-    if (!ori.abs && ori.compass !== null) {                     // iOS: alpha starts anywhere, so steer it by the compass, slowly
-      const want = (360 - ori.compass) % 360, d = ((want - a - (ori.offset ?? 0)) % 360 + 540) % 360 - 180;
-      ori.offset = ori.offset === null ? want - a : ori.offset + d * 0.03;
-      a += ori.offset;
+    // iOS: alpha starts anywhere, so north comes from the compass. The compass is read for the first second or so of the camera view
+    // and then HELD (Damian, 26 Nov 2026: it "moves on its own a bit"): following a jittery compass all the time made the whole scene
+    // swim. After that only the gyroscope turns the view, and a sideways drag lines it up by hand.
+    if (!ori.abs && ori.compass !== null) {
+      if (!ori.locked && ori.acc >= 0 && ori.acc <= 45) {
+        const upright = ori.b > 55 && ori.b < 125, flatish = Math.abs(ori.b) < 30 && Math.abs(ori.g) < 30;
+        if (upright || flatish) {                               // upright the compass tells where the camera faces, flat where the top of the phone points
+          euler.set(THREE.MathUtils.degToRad(ori.b), THREE.MathUtils.degToRad(ori.a), -THREE.MathUtils.degToRad(ori.g), 'YXZ'); qR.setFromEuler(euler).multiply(q1).multiply(q0.setFromAxisAngle(zee, -ori.screen));
+          vR.set(0, upright ? 0 : 1, upright ? -1 : 0).applyQuaternion(qR); const d = THREE.MathUtils.degToRad(ori.compass) - Math.atan2(vR.x, -vR.z);
+          ori.s += Math.sin(d); ori.c += Math.cos(d); ori.n++; ori.offset = THREE.MathUtils.radToDeg(Math.atan2(ori.s, ori.c)); if (ori.n >= 50) ori.locked = true; } }
+      if (ori.offset !== null) a -= ori.offset;
     }
     euler.set(THREE.MathUtils.degToRad(ori.b), THREE.MathUtils.degToRad(a), -THREE.MathUtils.degToRad(ori.g), 'YXZ');
     out.setFromEuler(euler); out.multiply(q1); out.multiply(q0.setFromAxisAngle(zee, -ori.screen));
@@ -193,7 +201,7 @@ export async function start() {
       if (!ok) { note('The camera is not available here. In the Claude app the camera is blocked, so open the GitHub link in Safari for the live camera. Showing the 360 photo instead.'); m = 'pano'; }
     }
     if (m === 'pano') stopCamera();
-    mode = m;
+    mode = m; if (m === 'cam') { ori.locked = false; ori.n = 0; ori.s = 0; ori.c = 0; headingNudge = 0; }      // north is found afresh each time the camera view opens
     scene.background = m === 'pano' ? panoTex : null;
     $('mPano').classList.toggle('on', m === 'pano'); $('mCam').classList.toggle('on', m === 'cam');
     $('hint').textContent = HINT[m]();
@@ -270,7 +278,8 @@ export async function start() {
     // frame (nothing that casts one moves fast), and if frames still come slowly the picture is drawn a little less sharply until they do not.
     if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
     if (FIXED === null && real < 0.5) { slow += (real - slow) * 0.05; sinceQ += real;
-      if (sinceQ > 2.5 && slow > 0.030 && quality > 0.7) { quality = Math.max(0.7, quality - 0.2); renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5) * quality); sinceQ = 0; if (quality < 0.95 && sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } } }
+      if (frameNo % 30 === 0) $('fps').textContent = Math.round(1 / slow) + ' fps' + (quality < 1 ? ' q' + Math.round(quality * 100) : '');
+      if (sinceQ > 2.5 && slow > 0.024 && quality > 0.6) { quality = Math.max(0.6, quality - 0.2); renderer.setPixelRatio(BASE_PR * quality); sinceQ = 0; if (quality < 0.95 && sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } } }
     if (!window.__norender) renderer.render(scene, camera);
   }
   const screens_hidden = () => document.getElementById('scene').hidden;

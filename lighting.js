@@ -21,7 +21,7 @@ export function solar(date, lat, lon) {
 }
 export function createLighting({ scene, sun, hemi, shadow, sunDir, video, lat, lon }) {
   const base = { dir: sunDir.clone(), sunI: sun.intensity, sunC: sun.color.clone(), hemiI: hemi.intensity, sky: hemi.color.clone(), ground: hemi.groundColor.clone(), env: 0.75, shadow: shadow.opacity };
-  const cv = document.createElement('canvas'); cv.width = cv.height = 24; const cx = cv.getContext('2d', { willReadFrequently: true });
+  const cv = document.createElement('canvas'); cv.width = cv.height = 16; const cx = cv.getContext('2d', { willReadFrequently: true });
   const want = { dir: base.dir.clone(), sunI: base.sunI, sunC: base.sunC.clone(), hemiI: base.hemiI, sky: base.sky.clone(), ground: base.ground.clone(), env: base.env, shadow: base.shadow };
   const state = { az: 0, el: 0, bright: 1, direct: 1, live: false }; let since = 9;
   const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }, warm = new THREE.Color(1.0, 0.56, 0.26), white = new THREE.Color(1, 1, 1), tint = new THREE.Color();
@@ -31,7 +31,7 @@ export function createLighting({ scene, sun, hemi, shadow, sunDir, video, lat, l
     const el = Math.max(s.el, 12) * rad, az = s.az * rad;                    // a very low or set sun still lights from its side of the sky, softly
     want.dir.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
     let bright = 1, direct = 0.8, r = 1, g = 1, b = 1;
-    if (video && video.readyState >= 2 && video.videoWidth) { try { cx.drawImage(video, 0, 0, 24, 24); const d = cx.getImageData(0, 0, 24, 24).data, L = []; r = g = b = 0;
+    if (video && video.readyState >= 2 && video.videoWidth) { try { cx.drawImage(video, 0, 0, 16, 16); const d = cx.getImageData(0, 0, 16, 16).data, L = []; r = g = b = 0;
         for (let i = 0; i < d.length; i += 4) { const R = lin(d[i]), G = lin(d[i + 1]), B = lin(d[i + 2]); r += R; g += G; b += B; L.push(0.2126 * R + 0.7152 * G + 0.0722 * B); }
         const n = L.length; r /= n; g /= n; b /= n; L.sort((p, q) => p - q); const mean = 0.2126 * r + 0.7152 * g + 0.0722 * b, lo = L[Math.floor(n * 0.08)], hi = L[Math.floor(n * 0.95)];
         bright = clamp(mean / 0.20, 0.12, 1.35);                              // a daylight picture averages about 0.2 linear; a dim room far less
@@ -47,7 +47,7 @@ export function createLighting({ scene, sun, hemi, shadow, sunDir, video, lat, l
     state,
     /** dt in real seconds; camMode: the live camera is behind the scene */
     update(dt, camMode) {
-      since += dt; if (since > (camMode ? 0.4 : 2)) { since = 0; solve(camMode); }
+      since += dt; if (since > (camMode ? 1.5 : 2)) { since = 0; solve(camMode); }
       const k = 1 - Math.exp(-dt / 1.4);                                     // the same 1.4 s ease as the Unity build
       sunDir.lerp(want.dir, k).normalize(); sun.position.copy(sunDir).multiplyScalar(60);
       sun.intensity += (want.sunI - sun.intensity) * k; sun.color.lerp(want.sunC, k); hemi.intensity += (want.hemiI - hemi.intensity) * k; hemi.color.lerp(want.sky, k); hemi.groundColor.lerp(want.ground, k);
