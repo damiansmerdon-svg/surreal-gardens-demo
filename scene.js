@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Fungus, Puffball, Spores, SporeCloud } from './fungi.js';
-import { createFishKit } from './fishkit.js';
+import { createFishKit, parseGFM } from './fishkit.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -88,7 +88,10 @@ export async function start() {
     fungi.push(f);
   }
   // flying fish from the pond on the left
-  const kit = createFishKit(), fish = [];
+  let fishV2 = null;
+  try { const TL = new THREE.TextureLoader(); const [b, e, albedo, iris] = await Promise.all([bin('fish_v2_body.txt'), bin('fish_v2_eyes.txt'), TL.loadAsync('fish_v2_albedo.jpg'), TL.loadAsync('fish_v2_iris.jpg')]);
+    fishV2 = { body: parseGFM(b), eyes: parseGFM(e), albedo, iris }; } catch (e) { fishV2 = null; }      // falls back to the first fish
+  const kit = createFishKit(fishV2), fish = [];
   for (let i = 0; i < 5; i++) { const f = kit.spawn(); f.visible = false; f.scale.multiplyScalar(1.4); scene.add(f); fish.push({ f }); }
   const WATER_Y = -0.35, OUT = new THREE.Vector3(-3.5, 0, -10.5), IN = new THREE.Vector3(-8.5, 0, -9);
   function planFish(t0) {
@@ -106,8 +109,8 @@ export async function start() {
   }
   function splash(p) { for (let k = 0; k < 50; k++) { const a = Math.random() * 6.28, q = Math.random() * 0.5; spores.emit({ x: p.x + Math.cos(a) * q, y: WATER_Y + 0.05 + Math.random() * 0.2, z: p.z + Math.sin(a) * q }, { x: Math.cos(a) * (0.6 + Math.random()), y: 1.5 + Math.random() * 2, z: Math.sin(a) * (0.6 + Math.random()) }, 1.6, [0.85, 0.95, 1.0], 5); } }
 
-  let time = 0, paused = false, nextFish = 70, nextWave = 34;
-  function restart() { time = 0; fungi.forEach(s => s.hide()); fish.forEach(o => { o.f.visible = false; }); spores.clear(); cloud.clear(); nextFish = 70; nextWave = 34; }
+  let time = 0, paused = false, nextFish = 12, nextWave = 34;
+  function restart() { time = 0; fungi.forEach(s => s.hide()); fish.forEach(o => { o.f.visible = false; }); spores.clear(); cloud.clear(); nextFish = 12; nextWave = 34; }
   restart();
 
   // ---------- looking around ----------
@@ -229,6 +232,7 @@ export async function start() {
   const screens_hidden = () => document.getElementById('scene').hidden;
   $('load').hidden = true;
   if (QS.get('t')) { const T = +QS.get('t'); for (let k = 0; k < T * 20; k++) { time += 0.05; for (const s of fungi) { if (time > s.startAt) s.begin(); s.update(0.05, time, viewer, null, null, null); } } }
+  if (QS.get('fish')) { planFish(time - +QS.get('fish')); nextFish = time + 99; }
   if (QS.get('rec')) { window.__frame = dt => { FIXED = dt; frame(); }; window.__look = (y, p) => { yaw = y; pitch = p; }; frame(); }
   else renderer.setAnimationLoop(frame);
   window.ready = true;

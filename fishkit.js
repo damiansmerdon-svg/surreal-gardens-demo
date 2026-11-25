@@ -39,7 +39,18 @@ function finMat(U, kind, seed) {
   return m;
 }
 
-export function createFishKit() {
+/** Reads the v2 fish binary (GFM1: counts, then positions, normals, uvs as floats, then 16-bit indices; Unity space, head +Z). */
+export function parseGFM(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), nv = dv.getInt32(4, true), ni = dv.getInt32(8, true);
+  const f = new Float32Array(bytes.buffer.slice(bytes.byteOffset + 12, bytes.byteOffset + 12 + nv * 32)), ix = new Uint16Array(bytes.buffer.slice(bytes.byteOffset + 12 + nv * 32, bytes.byteOffset + 12 + nv * 32 + ni * 2));
+  for (let i = 0; i < ni; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; }      // Unity winds its triangles the other way
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(f.subarray(0, nv * 3), 3)); g.setAttribute('normal', new THREE.BufferAttribute(f.subarray(nv * 3, nv * 6), 3)); g.setAttribute('uv', new THREE.BufferAttribute(f.subarray(nv * 6, nv * 8), 2));
+  g.setIndex(new THREE.BufferAttribute(ix, 1)); return g;
+}
+
+/** v2: { body, eyes: BufferGeometry, albedo, iris: Texture } is the modelled fish with a real face (25 Nov 2026); without it, the first fish. */
+export function createFishKit(v2 = null) {
   const U = { uTime: { value: 0 } };
   const bodyG = new THREE.SphereGeometry(0.11, 18, 12); bodyG.scale(0.8, 1.05, 4.0);
   { const pos = bodyG.attributes.position, col = []; for (let i = 0; i < pos.count; i++) { const y = pos.getY(i) / 0.115, z = pos.getZ(i) / 0.44;
@@ -58,15 +69,20 @@ export function createFishKit() {
   const iris = new THREE.MeshPhysicalMaterial({ color: 0xe9a224, roughness: 0.2, clearcoat: 1, emissive: 0x3a2400 }), pup = new THREE.MeshPhysicalMaterial({ color: 0x050505, roughness: 0.05, clearcoat: 1 });
   const bm = new THREE.MeshPhysicalMaterial({ vertexColors: true, map: scaleMap, bumpMap: scaleMap, bumpScale: 1.2, metalness: 0.6, roughness: 0.3, clearcoat: 0.6, iridescence: 0.45, iridescenceIOR: 1.4, iridescenceThicknessRange: [200, 600], envMapIntensity: 1.2 });
 
+  let bm2 = null, em2 = null;
+  if (v2) { for (const t of [v2.albedo, v2.iris]) { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; }
+    bm2 = new THREE.MeshPhysicalMaterial({ map: v2.albedo, metalness: 0.25, roughness: 0.38, clearcoat: 0.5, clearcoatRoughness: 0.3, iridescence: 0.3, iridescenceIOR: 1.35, iridescenceThicknessRange: [200, 500], envMapIntensity: 1.0, side: THREE.DoubleSide });
+    em2 = new THREE.MeshPhysicalMaterial({ map: v2.iris, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.3 }); }
+
   function spawn() {
     const seed = Math.random() * 20, wm = finMat(U, 0, seed), vm = finMat(U, 1, seed + 3);
-    const f = new THREE.Group(), body = new THREE.Mesh(bodyG, bm);
+    const f = new THREE.Group(), body = v2 ? new THREE.Mesh(v2.body, bm2) : new THREE.Mesh(bodyG, bm);
     const mk = (g, side, z, y, mat) => { const piv = new THREE.Group(); piv.position.set(side * 0.06, y, z); const m = new THREE.Mesh(g, mat); m.scale.x = side; piv.add(m); f.add(piv); return piv; };
     const wL = mk(wingG, 1, 0.16, 0.04, wm), wR = mk(wingG, -1, 0.16, 0.04, wm), pL = mk(hindG, 1, -0.06, 0.0, wm), pR = mk(hindG, -1, -0.06, 0.0, wm);
     const tail = new THREE.Group(); tail.position.z = -0.40;
     for (const [rz, s] of [[1.25, 1.0], [1.9, 0.8], [0.75, 0.75], [-1.15, 0.85]]) { const t = new THREE.Mesh(veilG, vm); t.rotation.set(0, Math.PI / 2, 0); t.rotateX(rz); t.scale.setScalar(s); tail.add(t); }
     const dors = new THREE.Mesh(dorsG, vm); dors.rotation.set(0, Math.PI / 2, 0); dors.rotateX(Math.PI / 2); dors.position.set(0, 0.09, 0.10);
-    for (const sx of [1, -1]) { const e = new THREE.Mesh(eyeG, iris); e.position.set(sx * 0.062, 0.025, 0.31); e.scale.set(0.6, 1, 1); const pu = new THREE.Mesh(pupG, pup); pu.position.set(sx * 0.074, 0.025, 0.315); pu.scale.set(0.6, 1, 1); f.add(e, pu); }
+    if (v2) f.add(new THREE.Mesh(v2.eyes, em2)); else for (const sx of [1, -1]) { const e = new THREE.Mesh(eyeG, iris); e.position.set(sx * 0.062, 0.025, 0.31); e.scale.set(0.6, 1, 1); const pu = new THREE.Mesh(pupG, pup); pu.position.set(sx * 0.074, 0.025, 0.315); pu.scale.set(0.6, 1, 1); f.add(e, pu); }
     f.add(body, tail, dors); f.traverse(o => { o.frustumCulled = false; });
     f.userData = { wL, wR, pL, pR, tail, ph: Math.random() * 6.28, size: 0.62 + 0.3 * Math.random() };
     f.scale.setScalar(f.userData.size);
