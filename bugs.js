@@ -173,11 +173,28 @@ export async function createBugs({ scene, bin, camera, fungi, world: W }) {
     if (best) best.n.lerp(Y, 0.6).normalize();      // it settles nearly level, whatever the bump it found
     if (best && W.hit(v1.copy(best.p).addScaledVector(best.n, 0.5), 0.2, -1) >= 0) best = null;
     return spots[fi] = best; }
-  const climbs = {}, ray = new THREE.Raycaster();
+  // Feeling a stem. The triangles of the fungus are sorted once into 10 cm layers by height, so each feel only looks at the
+  // few hundred triangles at its own height (a plain search through every triangle stalled a phone for a moment).
+  const climbs = {}, layers = {}, e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), pv = new THREE.Vector3(), tv = new THREE.Vector3(), qv = new THREE.Vector3();
+  function layersOf(fi) { if (layers[fi]) return layers[fi]; const f = fungi[fi], L = { tri: [], slab: new Map() }; f.root.updateMatrixWorld(true);
+    f.root.traverse(o => { if (!o.isMesh || !o.visible) return; const P = o.geometry.attributes.position, I = o.geometry.index, w = new Float32Array(P.count * 3);
+      for (let k = 0; k < P.count; k++) { v1.fromBufferAttribute(P, k).applyMatrix4(o.matrixWorld); w[k * 3] = v1.x; w[k * 3 + 1] = v1.y; w[k * 3 + 2] = v1.z; }
+      const n = I ? I.count : P.count;
+      for (let k = 0; k < n; k += 3) { const a = I ? I.getX(k) : k, b = I ? I.getX(k + 1) : k + 1, c2 = I ? I.getX(k + 2) : k + 2, t = L.tri.length;
+        L.tri.push(w[a * 3], w[a * 3 + 1], w[a * 3 + 2], w[b * 3], w[b * 3 + 1], w[b * 3 + 2], w[c2 * 3], w[c2 * 3 + 1], w[c2 * 3 + 2]);
+        const lo = Math.floor(Math.min(w[a * 3 + 1], w[b * 3 + 1], w[c2 * 3 + 1]) * 10), hi = Math.floor(Math.max(w[a * 3 + 1], w[b * 3 + 1], w[c2 * 3 + 1]) * 10);
+        for (let s = lo; s <= hi; s++) { let arr = L.slab.get(s); if (!arr) L.slab.set(s, arr = []); arr.push(t); } } });
+    return layers[fi] = L; }
+  function feel(L, o, d, far) { let best = far, bt = -1; const T = L.tri, y0 = Math.floor(Math.min(o.y, o.y + d.y * far) * 10), y1 = Math.floor(Math.max(o.y, o.y + d.y * far) * 10);
+    for (let s = y0; s <= y1; s++) { const arr = L.slab.get(s); if (!arr) continue;
+      for (let k = 0; k < arr.length; k++) { const t = arr[k]; e1.set(T[t + 3] - T[t], T[t + 4] - T[t + 1], T[t + 5] - T[t + 2]); e2.set(T[t + 6] - T[t], T[t + 7] - T[t + 1], T[t + 8] - T[t + 2]);
+        pv.crossVectors(d, e2); const det = e1.dot(pv); if (det > -1e-9 && det < 1e-9) continue; const inv = 1 / det; tv.set(o.x - T[t], o.y - T[t + 1], o.z - T[t + 2]);
+        const u = tv.dot(pv) * inv; if (u < 0 || u > 1) continue; qv.crossVectors(tv, e1); const w = d.dot(qv) * inv; if (w < 0 || u + w > 1) continue; const dist = e2.dot(qv) * inv; if (dist > 1e-4 && dist < best) { best = dist; bt = t; } } }
+    if (bt < 0) return null; e1.set(T[bt + 3] - T[bt], T[bt + 4] - T[bt + 1], T[bt + 5] - T[bt + 2]); e2.set(T[bt + 6] - T[bt], T[bt + 7] - T[bt + 1], T[bt + 8] - T[bt + 2]);
+    const n = new THREE.Vector3().crossVectors(e1, e2).normalize(); if (n.dot(d) > 0) n.negate(); return { p: o.clone().addScaledVector(d, best), n }; }
   function climbPath(fi, ang) { const key = fi + ':' + ang; if (key in climbs) return climbs[key];
-    const f = fungi[fi], c = f.root.position, toV = new THREE.Vector3(-c.x, 0, -c.z).normalize().applyAxisAngle(Y, ang), lat = new THREE.Vector3(toV.z, 0, -toV.x), neg = toV.clone().negate(), nlat = lat.clone().negate(), meshes = [];
-    f.root.updateMatrixWorld(true); f.root.traverse(o => { if (o.isMesh && o.visible) meshes.push(o); });
-    const cast = (o, d, far) => { ray.set(o, d); ray.far = far; const h = ray.intersectObjects(meshes, false)[0]; if (!h) return null; const n = h.face.normal.clone().transformDirection(h.object.matrixWorld); if (n.dot(d) > 0) n.negate(); return { p: h.point.clone(), n }; };
+    const f = fungi[fi], c = f.root.position, toV = new THREE.Vector3(-c.x, 0, -c.z).normalize().applyAxisAngle(Y, ang), lat = new THREE.Vector3(toV.z, 0, -toV.x), neg = toV.clone().negate(), nlat = lat.clone().negate(), L = layersOf(fi);
+    const cast = (o, d, far) => feel(L, o, d, far);
     const pts = []; let ax = c.x, az = c.z;
     for (let y = 0.1; y < 9; y += 0.1) {
       let h = null; for (const off of pts.length ? [0] : [0, 0.15, -0.15, 0.35, -0.35, 0.6, -0.6]) { h = cast(new THREE.Vector3(ax + toV.x * 3 + lat.x * off, y, az + toV.z * 3 + lat.z * off), neg, 5); if (h) { ax += lat.x * off; az += lat.z * off; break; } }
@@ -253,25 +270,24 @@ export async function createBugs({ scene, bin, camera, fungi, world: W }) {
   // (Damian, 25 Nov 2026: it "looks great when flying... but does some unrealistic turns and movements... should mostly be flying")
   const flat = new THREE.Vector3(), qb = new THREE.Quaternion(), Z = new THREE.Vector3(0, 0, 1);
   const openLine = (P, Q) => { const n = Math.ceil(P.distanceTo(Q) / 0.3); for (let i = 1; i < n; i++) { v1.lerpVectors(P, Q, i / n); if (W.hit(v1, 0.8) >= 0 || Math.hypot(v1.x, v1.y - 1.55, v1.z) < 2) return false; } return true; };
+  // One try at a flight each frame (planning a whole flight in one go made the picture stick for a moment on a phone).
   function gliderNext(b) {
-    const from = b.mode === 'wait' ? null : b.pos.clone();
-    for (const fi of LAND.filter(fi => grown(fi) && !top[fi] && fi !== b.host).sort(() => Math.random() - 0.5)) { const sp = landSpot(fi); if (!sp) continue;
-      const B = sp.p.clone().addScaledVector(sp.n, 0.035 * b.s); let c = null;
-      for (let k = 0; k < 40 && !c; k++) { const pts = [], turn = Math.random() < 0.5 ? 1 : -1; let a, A;
-        if (!from) { a = THREE.MathUtils.degToRad(b.az + (Math.random() - 0.5) * 50); A = new THREE.Vector3(Math.sin(a) * 26, 9 + Math.random() * 3, -Math.cos(a) * 26); pts.push(A); a = Math.atan2(A.x, -A.z); }
-        else { A = from; a = Math.atan2(A.x, -A.z); pts.push(A); }
-        const loops = k > 37 ? 0 : k > 32 ? 1 : k > 24 ? 2 : k > 12 ? 3 + Math.floor(Math.random() * 2) : (from ? 5 : 2) + Math.floor(Math.random() * 3), w = [];
-        for (let i = 1; i <= loops; i++) { a += turn * (0.8 + Math.random() * 0.5); for (let q = 0; q < 30; q++) { const a2 = a + (Math.random() - 0.5) * 0.7, r = 3.0 + Math.random() * 6.5; tmp.set(Math.sin(a2) * r, 2.2 + Math.random() * 4.2, -Math.cos(a2) * r); if (W.hit(tmp, 1.1) < 0 && openLine(w[w.length - 1] || (from ? tmp2.copy(A).addScaledVector(Y, 0.9) : tmp), tmp)) { w.push(tmp.clone()); break; } } }
-        if (w.length < Math.min(loops, 3)) continue;
-        const first = w[0] || B, lastW = w[w.length - 1] || A;
-        if (from) pts.push(A.clone().addScaledVector(Y, 0.45).addScaledVector(flat.subVectors(first, A).setY(0).normalize(), 0.7));          // it lifts off forward, not straight up
-        pts.push(...w);
-        pts.push(B.clone().addScaledVector(Y, 0.5).addScaledVector(flat.subVectors(lastW, B).setY(0).normalize(), 0.9));                     // and comes in on a shallow glide
-        pts.push(B);
-        c = W.route(pts, { r: 0.5, hostA: from ? b.host : -1, hostB: fi }); }
-      if (!c) continue;
-      if (b.host >= 0) top[b.host] = null; b.prev = b.host; top[fi] = b; b.host = fi; b.spot = sp; b.land = B; b.curve = c; b.u = 0; b.bank = 0; b.yaw0 = null; b.mode = 'fly'; return true; }
-    return false; }
+    const from = b.mode === 'wait' ? null : b.pos;
+    if (!b.cand || !b.cand.length) { b.cand = LAND.filter(fi => grown(fi) && !top[fi] && fi !== b.host && landSpot(fi)).sort(() => Math.random() - 0.5); b.k = 0; if (!b.cand.length) return false; }
+    const fi = b.cand[0], sp = landSpot(fi), k = b.k++; if (b.k >= 40 || !grown(fi) || top[fi]) { b.cand.shift(); b.k = 0; if (!grown(fi) || top[fi]) return false; }
+    const B = sp.p.clone().addScaledVector(sp.n, 0.035 * b.s), pts = [], turn = Math.random() < 0.5 ? 1 : -1; let a, A;
+    if (!from) { a = THREE.MathUtils.degToRad(b.az + (Math.random() - 0.5) * 50); A = new THREE.Vector3(Math.sin(a) * 26, 9 + Math.random() * 3, -Math.cos(a) * 26); a = Math.atan2(A.x, -A.z); } else { A = from.clone(); a = Math.atan2(A.x, -A.z); }
+    pts.push(A);
+    const loops = k > 37 ? 0 : k > 32 ? 1 : k > 24 ? 2 : k > 12 ? 3 + Math.floor(Math.random() * 2) : (from ? 5 : 2) + Math.floor(Math.random() * 3), w = [];
+    for (let i = 1; i <= loops; i++) { a += turn * (0.8 + Math.random() * 0.5); for (let q = 0; q < 30; q++) { const a2 = a + (Math.random() - 0.5) * 0.7, r = 3.0 + Math.random() * 6.5; tmp.set(Math.sin(a2) * r, 2.2 + Math.random() * 4.2, -Math.cos(a2) * r); if (W.hit(tmp, 1.1) < 0 && openLine(w[w.length - 1] || (from ? tmp2.copy(A).addScaledVector(Y, 0.9) : tmp), tmp)) { w.push(tmp.clone()); break; } } }
+    if (w.length < Math.min(loops, 3)) return false;
+    const first = w[0] || B, lastW = w[w.length - 1] || A;
+    if (from) pts.push(A.clone().addScaledVector(Y, 0.45).addScaledVector(flat.subVectors(first, A).setY(0).normalize(), 0.7));          // it lifts off forward, not straight up
+    pts.push(...w);
+    pts.push(B.clone().addScaledVector(Y, 0.5).addScaledVector(flat.subVectors(lastW, B).setY(0).normalize(), 0.9));                     // and comes in on a shallow glide
+    pts.push(B);
+    const c = W.route(pts, { r: 0.5, hostA: from ? b.host : -1, hostB: fi }); if (!c) return false;
+    if (b.host >= 0) top[b.host] = null; b.prev = b.host; top[fi] = b; b.host = fi; b.spot = sp; b.land = B; b.curve = c; b.u = 0; b.bank = 0; b.yaw0 = null; b.mode = 'fly'; b.cand = null; return true; }
   function glider(b, dt) {
     if (b.mode === 'fly') { const L = b.curve.len, left = (1 - b.u) * L, sp = 0.45 + 2.5 * smooth(0, 2.5, left) * (0.3 + 0.7 * smooth(0, 1.5, b.u * L + 0.3));
       b.u = Math.min(1, b.u + sp * dt / L); b.curve.getPointAt(b.u, b.pos); b.curve.getTangentAt(b.u, tmp); b.flap = 0.9;
@@ -283,7 +299,7 @@ export async function createBugs({ scene, bin, camera, fungi, world: W }) {
       if (b.u >= 1) { b.mode = 'rest'; b.t = 2.5 + Math.random() * 3; } }
     else if (b.mode === 'rest') { b.t -= dt; b.bank = 0; b.flap += (0.12 - b.flap) * (1 - Math.exp(-dt * 2)); b.up.copy(b.spot.n); b.pos.copy(b.land).add(sway(b.host, b.land.y, off));
       tmp.copy(b.fwd).addScaledVector(b.up, -b.fwd.dot(b.up)).normalize(); b.fwd.copy(tmp);
-      if (b.t <= 0 && !gliderNext(b)) b.t = 0.7; }
+      if (b.t <= 0) gliderNext(b); }
     set(b, 'uFlap', b.flap); basisQuat(b.fwd, b.up, b.qWant); b.qWant.multiply(qb.setFromAxisAngle(Z, b.bank || 0));
   }
   function start(b) {
@@ -301,7 +317,7 @@ export async function createBugs({ scene, bin, camera, fungi, world: W }) {
     update(dt, time) {
       TIME.value = time;
       for (const b of list) {
-        if (b.mode === 'wait') { if (time < b.arrive) continue; start(b); if (b.mode === 'wait') { b.arrive = time + 3; continue; } }
+        if (b.mode === 'wait') { if (time < b.arrive) continue; start(b); if (b.mode === 'wait') continue; }
         if (b.host >= 0 && !grown(b.host)) { api.reset(); return; }
         if (b.role === 'crawler') crawler(b, dt); else if (b.role === 'hopper') hopper(b, dt); else glider(b, dt);
         b.q.slerp(b.qWant, 1 - Math.exp(-dt * (b.role === 'glider' ? 3 : 7)));

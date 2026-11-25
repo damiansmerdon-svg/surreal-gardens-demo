@@ -27,24 +27,25 @@ export async function createMoth({ scene, bin, camera, world: W, EYE }) {
   function play(name, fade = 0.5) { const a = actions[name]; if (!a || curName === name) return; a.reset().setLoop(THREE.LoopRepeat, Infinity); if (cur) { a.fadeIn(fade).play(); cur.fadeOut(fade); } else a.play(); cur = a; curName = name; }
   const wingSets = {};
   async function dress(v) { if (!wingSets[v]) wingSets[v] = await Promise.all(WINGS.map(w => tex('wing_' + v + '_' + w + '.webp', true))); WINGS.forEach((w, i) => { const m = M['SS_Wing_' + w]; m.map = m.emissiveMap = wingSets[v][i]; m.needsUpdate = true; }); }
-  let mode = 'away', next = 46, curve = null, u = 0, t = 0, hoverP = new THREE.Vector3(), blink = 0, bt = -1, lookW = 0, lookY = 0, lookP = 0, busy = false, visits = 0, lvl = 1.02, lvlWant = 1.02;
+  let mode = 'away', next = 46, curve = null, u = 0, t = 0, hoverP = new THREE.Vector3(), blink = 0, bt = -1, lookW = 0, lookY = 0, lookP = 0, busy = false, visits = 0, tries = 0, lvl = 1.02, lvlWant = 1.02;
   const X = new THREE.Vector3(1, 0, 0), qx = new THREE.Quaternion(), q = new THREE.Quaternion(), qWant = new THREE.Quaternion(), fwd = new THREE.Vector3(), v = new THREE.Vector3(), camDir = new THREE.Vector3(), headRest = bones.Head ? null : null;
   const sky = () => { const a = Math.random() * 6.283; return new THREE.Vector3(Math.sin(a) * 42, 13 + Math.random() * 7, Math.cos(a) * 42); };
-  async function plan() { busy = true;
-    try { await dress(VARIANTS[(visits + Math.floor(Math.random() * 2)) % 4]);
-      camera.getWorldDirection(camDir); const base = Math.atan2(camDir.x, camDir.z);
-      for (let k = 0; k < 40; k++) { const a = base + (Math.random() - 0.5) * (0.6 + k * 0.15), r = 2.7 + Math.random() * 1.4; hoverP.set(Math.sin(a) * r, EYE + 0.15 + Math.random() * 0.75, Math.cos(a) * r);
-        if (W.hit(hoverP, 1.1) >= 0) continue; const c = W.flight(sky(), hoverP, { r: 0.9, cam: 2.2, far: true, midAt: 0.8, lifts: [1.5, 3, 5, 8], sides: [0, 2.5, -2.5, 5, -5] }); if (!c) continue;
-        curve = c; u = 0; mode = 'in'; curve.getPointAt(0, root.position); curve.getTangentAt(0, fwd); fwd.y = 0; basisQuat(fwd, Y, q); lvl = 1.02; root.visible = true; visits++; play('Moth_Fly', 0); break; }
-      if (mode !== 'in') next += 8; } finally { busy = false; } }
-  function leave() { for (let k = 0; k < 30; k++) { const c = W.flight(hoverP, sky(), { r: 0.9, cam: 2.2, midAt: 0.25, lifts: [1.5, 3, 5, 8], sides: [0, 2.5, -2.5, 5, -5] }); if (c) { curve = c; u = 0; mode = 'out'; play('Moth_Fly', 0.8); return; } } t = 2; }
+  // one candidate flight is tried per frame, so finding a clear way in or out never holds the picture up
+  const LIFTS = [1.5, 3, 5, 8], SIDES = [0, 2.5, -2.5, 5, -5], pick = a => a[Math.floor(Math.random() * a.length)];
+  async function plan() { busy = true; try { await dress(VARIANTS[(visits + Math.floor(Math.random() * 2)) % 4]); mode = 'seek'; tries = 0; } finally { busy = false; } }
+  function seek(time) { camera.getWorldDirection(camDir); const base = Math.atan2(camDir.x, camDir.z), k = tries++;
+    const a = base + (Math.random() - 0.5) * (0.6 + k * 0.1), r = 2.7 + Math.random() * 1.4; hoverP.set(Math.sin(a) * r, EYE + 0.15 + Math.random() * 0.75, Math.cos(a) * r);
+    if (W.hit(hoverP, 1.1) >= 0) return; const c = W.flight(sky(), hoverP, { r: 0.9, cam: 2.2, far: true, midAt: 0.8, lifts: [pick(LIFTS)], sides: [pick(SIDES)] }); if (!c) { if (tries > 400) { mode = 'away'; next = time + 10; } return; }
+    curve = c; u = 0; mode = 'in'; curve.getPointAt(0, root.position); curve.getTangentAt(0, fwd); fwd.y = 0; basisQuat(fwd, Y, q); lvl = 1.02; root.visible = true; visits++; play('Moth_Fly', 0); }
+  function leave() { const c = W.flight(hoverP, sky(), { r: 0.9, cam: 2.2, midAt: 0.25, lifts: [pick(LIFTS)], sides: [pick(SIDES)] }); if (c) { curve = c; u = 0; mode = 'out'; play('Moth_Fly', 0.8); } }
   return {
-    get visible() { return root.visible; }, root,
+    get visible() { return root.visible; }, get busyNow() { return busy || mode !== 'away'; }, root,
     visit(time) { next = time; },
-    reset() { mode = 'away'; root.visible = false; next = 46; },
+    reset() { if (mode === 'seek') tries = 1e9; mode = 'away'; root.visible = false; next = 46; },
     clash() { return root.visible ? W.hit(root.position, 0.6) : -1; },
     update(dt, time) {
       if (mode === 'away') { if (time > next && !busy) plan(); return; }
+      if (mode === 'seek') { seek(time); if (mode !== 'in') return; }
       mixer.update(dt);
       if (mode === 'in' || mode === 'out') { const L = curve.len, done = u * L, left = (1 - u) * L, sp = mode === 'in' ? 1.0 + 6.5 * smooth(0, 7, left) : 1.0 + 7.5 * smooth(0, 6, done);
         u = Math.min(1, u + sp * dt / L); curve.getPointAt(u, root.position); curve.getTangentAt(u, fwd); fwd.y = 0; if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1); lvlWant = mode === 'in' ? 1.02 * smooth(1.5, 6, left) : 1.02 * smooth(0.3, 3, done);

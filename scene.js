@@ -10,6 +10,7 @@ import { createSerpent } from './serpent.js';
 import { createBugs } from './bugs.js';
 import { createWorld } from './world.js';
 import { createMoth } from './moth.js';
+import { createLighting } from './lighting.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -28,7 +29,7 @@ export async function start() {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
   renderer.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 1500);
@@ -41,8 +42,9 @@ export async function start() {
   sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
   Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 120 }); sun.shadow.radius = 6;
   sun.target.position.set(0, 0, 0); sun.position.copy(SUN_DIR).multiplyScalar(60); scene.add(sun, sun.target);
+  const shadowMat = new THREE.ShadowMaterial({ opacity: 0.32, color: 0x0b1404, depthWrite: false });
   { const geo = new THREE.PlaneGeometry(60, 60); geo.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.32, color: 0x0b1404, depthWrite: false })); m.position.y = 0.03; m.receiveShadow = true; m.renderOrder = 1; scene.add(m); }
+    const m = new THREE.Mesh(geo, shadowMat); m.position.y = 0.03; m.receiveShadow = true; m.renderOrder = 1; scene.add(m); }
 
   // ---------- load ----------
   const files = []; let done = 0; const tick = () => { done++; loadBar.style.width = Math.round(100 * done / files.length) + '%'; };
@@ -158,7 +160,7 @@ export async function start() {
     return out;
   }
   let drag = null;
-  canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointerdown', e => { turnTo = null; drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', e => { if (!drag) return; const k = 0.0032 * camera.fov / 70, dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
     if (ori.on) headingNudge += dx * k; else { yaw += dx * k; pitch = clamp(pitch + dy * k, -1.3, 1.3); } });
   const endDrag = () => { drag = null; }; canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
@@ -196,10 +198,21 @@ export async function start() {
   }
   $('mPano').onclick = () => setMode('pano'); $('mCam').onclick = () => setMode('cam');
   $('bAgain').onclick = () => restart();
-  $('bSpore').onclick = () => { for (const s of fungi) { if (s.trigger) s.trigger(0.5); else if (s.state === 'grown') spores.shed(s, 160); } };
-  $('bSerpent').onclick = () => { if (serpent && !serpent.active) { serpent.start(); nextSerpent = time + 120; } };
-  $('bMoth').onclick = () => { if (moth && !moth.visible) moth.visit(time); };
-  $('bFish').onclick = () => { planFish(time + 0.3); nextFish = time + 60; };
+  // The four call buttons (Damian, 25 Nov 2026: "They don't seem to do anything"): each calls its creature in from far off, so the
+  // button lights up from the tap until the creature has gone, one tapped before its creature has loaded is remembered, and in the
+  // 360 photo the view swings round to where the fish and the serpent come from.
+  let sporeOn = 0, fishOn = 0, wantSerpent = false, wantMoth = false, turnTo = null;
+  $('bSpore').onclick = () => { sporeOn = time + 5; let n = 0; for (const s of fungi) { if (s.trigger) s.trigger(0.5); if (s.state !== 'hidden' && s.state !== 'rest') { spores.shed(s, 160); n++; } }
+    camera.getWorldDirection(tmp); for (let k = 0; k < (n > 3 ? 120 : 420); k++) { const r = 1.5 + Math.random() * 3.5; spores.emit({ x: tmp.x * r + (Math.random() - 0.5) * 3, y: EYE - 0.9 + Math.random() * 2.2, z: tmp.z * r + (Math.random() - 0.5) * 3 }, { x: (Math.random() - 0.5) * 0.2, y: 0.05 + Math.random() * 0.2, z: (Math.random() - 0.5) * 0.2 }, 5, [1.0, 0.92, 0.7], 1); } };
+  $('bSerpent').onclick = () => { wantSerpent = true; turnTo = 0.1; };
+  $('bMoth').onclick = () => { wantMoth = true; };
+  $('bFish').onclick = () => { planFish(time + 0.3); nextFish = time + 60; fishOn = time + 24; turnTo = 0.05; };
+  function buttons() {
+    if (wantSerpent && serpent) { wantSerpent = false; if (!serpent.active) { serpent.start(); nextSerpent = time + 120; } }
+    if (wantMoth && moth) { wantMoth = false; if (!moth.busyNow) moth.visit(time); }
+    $('bSpore').classList.toggle('on', time < sporeOn); $('bFish').classList.toggle('on', time < fishOn || fish.some(o => o.f.visible));
+    $('bSerpent').classList.toggle('on', wantSerpent || !!(serpent && serpent.active)); $('bMoth').classList.toggle('on', wantMoth || !!(moth && moth.busyNow));
+  }
   $('scale').oninput = e => { userScale = +e.target.value; fungi.forEach(s => s.root.scale.setScalar(s.item.scale * userScale)); };
 
   function beat() {
@@ -220,12 +233,16 @@ export async function start() {
     if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) {
       renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = w < h ? 68 : 52; camera.updateProjectionMatrix(); }
   }
-  const clock = new THREE.Clock(), tmp = new THREE.Vector3(); let FIXED = null;
+  const lighting = createLighting({ scene, sun, hemi, shadow: shadowMat, sunDir: SUN_DIR, video, lat: -34.917914, lon: 138.61283 }); window.__lighting = lighting;
+  const clock = new THREE.Clock(), tmp = new THREE.Vector3(); let FIXED = null, frameNo = 0, slow = 0.016, sinceQ = 0, quality = 1;
   const viewer = new THREE.Vector3(0, EYE, 0);
   function frame() {
     if (screens_hidden()) return;
     resize();
-    const raw = FIXED !== null ? FIXED : Math.min(clock.getDelta(), 0.05), dt = paused ? 0 : raw * (reduceMotion ? 0.6 : 1);
+    const real = clock.getDelta(), raw = FIXED !== null ? FIXED : Math.min(real, 0.05), dt = paused ? 0 : raw * (reduceMotion ? 0.6 : 1);
+    if (turnTo !== null && !ori.on) { const d = Math.atan2(Math.sin(turnTo - yaw), Math.cos(turnTo - yaw)), k = 1 - Math.exp(-real * 1.8); yaw += d * k; pitch += (0.12 - pitch) * k; if (Math.abs(d) < 0.02) turnTo = null; }
+    if (frameNo % 8 === 0) buttons();
+    if (FIXED === null) lighting.update(Math.min(real, 0.1), mode === 'cam' && !video.hidden);
     if (ori.on) deviceQuat(camera.quaternion); else camera.rotation.set(pitch, yaw, 0, 'YXZ');
     if (dt > 0) {
       time += dt; kit.tick(time);
@@ -246,6 +263,11 @@ export async function start() {
       spores.ambient(dt, viewer, groundY); spores.step(dt, time, groundY, camera, renderer); cloud.step(dt, time, WIND, renderer);
     }
     $('beat').textContent = beat();
+    // Keeping it smooth on a phone (Damian, 25 Nov 2026: "the movement seems a little sticky"): the shadows are redrawn every third
+    // frame (nothing that casts one moves fast), and if frames still come slowly the picture is drawn a little less sharply until they do not.
+    if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
+    if (FIXED === null && real < 0.5) { slow += (real - slow) * 0.05; sinceQ += real;
+      if (sinceQ > 2.5 && slow > 0.030 && quality > 0.7) { quality = Math.max(0.7, quality - 0.2); renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5) * quality); sinceQ = 0; if (quality < 0.95 && sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } } }
     if (!window.__norender) renderer.render(scene, camera);
   }
   const screens_hidden = () => document.getElementById('scene').hidden;

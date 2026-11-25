@@ -11,11 +11,11 @@ export function basisQuat(fwd, up, q) {
 }
 const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _m = new THREE.Matrix4();
 export function createWorld(fungi, eye = 1.55) {
-  const vox = new Map(), low = [], v = new THREE.Vector3(), K = (ix, iy, iz) => ((ix + 512) * 1024 + iy + 16) * 1024 + iz + 512;
+  let topY = 0; const vox = new Map(), low = [], v = new THREE.Vector3(), K = (ix, iy, iz) => ((ix + 512) * 1024 + iy + 16) * 1024 + iz + 512;
   fungi.forEach((f, i) => { f.root.updateMatrixWorld(true); f.root.traverse(o => { if (!o.isMesh || !o.visible) return; const P = o.geometry.attributes.position;
-    for (let j = 0; j < P.count; j++) { v.fromBufferAttribute(P, j).applyMatrix4(o.matrixWorld); if (v.y < 0.05) continue; const k = K(fl(v.x / V), fl(v.y / V), fl(v.z / V)); if (!vox.has(k)) { vox.set(k, i); if (v.y < 0.9) low.push(v.x, v.z); } } }); });
+    for (let j = 0; j < P.count; j++) { v.fromBufferAttribute(P, j).applyMatrix4(o.matrixWorld); if (v.y < 0.05) continue; if (v.y > topY) topY = v.y; const k = K(fl(v.x / V), fl(v.y / V), fl(v.z / V)); if (!vox.has(k)) { vox.set(k, i); if (v.y < 0.9) low.push(v.x, v.z); } } }); });
   /** index of a fungus within r of p (other than `ignore`), or -1 */
-  function hit(p, r, ignore = -1) { const n = Math.ceil(r / V), ix = fl(p.x / V), iy = fl(p.y / V), iz = fl(p.z / V);
+  function hit(p, r, ignore = -1) { if (p.y - r > topY + V || p.y + r < 0) return -1; const n = Math.ceil(r / V), ix = fl(p.x / V), iy = fl(p.y / V), iz = fl(p.z / V);
     for (let dx = -n; dx <= n; dx++) for (let dy = -n; dy <= n; dy++) for (let dz = -n; dz <= n; dz++) { if (dx * dx + dy * dy + dz * dz > n * n) continue; const h = vox.get(K(ix + dx, iy + dy, iz + dz)); if (h !== undefined && h !== ignore) return h; }
     return -1; }
   const grids = {};

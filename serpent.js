@@ -9,7 +9,7 @@ export async function createSerpent({ scene, bin, EYE = 1.55, length = 15 }) {
 const tex2 = {}, mats = {}, clips = {}, chain = []; let serpent, mixer, headBone, restQ = [], cum = [], headDist = 0, scaleMul = 1, time = 0;
 const TEXS = ['tex_Scales_A.jpg', 'tex_Scales_N.jpg', 'tex_Scales_M.jpg', 'tex_Membrane_A.jpg', 'tex_Membrane_N.jpg'];
 const TL = new THREE.TextureLoader();
-const [glbBytes] = await Promise.all([bin('serpent_v3_glb.txt'), ...TEXS.map(f => TL.loadAsync(f).then(t => { tex2[f] = t; }))]);
+const [glbBytes] = await Promise.all([bin('serpent_v4_glb.txt'), ...TEXS.map(f => TL.loadAsync(f).then(t => { tex2[f] = t; }))]);
 const gltf = await new GLTFLoader().parseAsync(glbBytes.buffer, '');
 // water-made look: fresnel rim glow, flowing light veins, and a fade/tint below the surface
 function waterise(m, rim, veins, silk = 0) {
@@ -85,7 +85,7 @@ mats.veil = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.45, t
 waterise(mats.veil, 0.0, 0.0, 1.0);
 mats.glow = new THREE.MeshPhysicalMaterial({ color: 0x0c0a06, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.6, sheen: 1, sheenColor: new THREE.Color(0xb07a1a), sheenRoughness: 0.35, name: 'WS_Glow' });
 serpent = gltf.scene;
-serpent.traverse(o => { if (o.isMesh) { o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; const nm = ms.map(m => m.name === 'WS_Veil' ? mats.veil : m.name === 'WS_Fin' ? mats.fin : m.name === 'WS_Glow' ? mats.glow : mats.body); o.material = Array.isArray(o.material) ? nm : nm[0]; } });
+serpent.traverse(o => { if (o.isMesh) { o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; const nm = ms.map(m => { if (/^V4_/.test(m.name)) { m.envMapIntensity = m.name === 'V4_Eye' ? 1.3 : 0.7; if (m.name === 'V4_Mouth') m.side = THREE.DoubleSide; return m; } return m.name === 'WS_Veil' ? mats.veil : m.name === 'WS_Fin' ? mats.fin : m.name === 'WS_Glow' ? mats.glow : mats.body; }); o.material = Array.isArray(o.material) ? nm : nm[0]; } });
 scene.add(serpent);
 mixer = new THREE.AnimationMixer(serpent);
 gltf.animations.forEach(c => { clips[c.name] = c; });
@@ -203,7 +203,7 @@ function resetStory() {
   fish.forEach(f => { const u = f.userData; u.eatenT = -1; u.chaseT = 0; u.jink = 0; f.visible = true; school(0, f.position).add(u.off); });
 }
 let scatter = 0;
-setupJaw(); try { buildTeeth(); } catch (e) {}
+setupJaw();      // the V4 head (25 Nov 2026) carries its own teeth, tongue and mouth lining
 
 // ---- the path. World: x east, y up, z south. The boardwalk is about 30 m north across the pond.
 // Damian, 25 Nov: "fly over the other side of the path and go around a bit too... we don't see it much": after it reaches you it
