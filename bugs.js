@@ -249,27 +249,45 @@ export async function createBugs({ scene, bin, camera, fungi, world: W }) {
       if (b.k >= 1) { b.mode = 'sit'; b.t = b.path && b.seg < b.path.length - 1 ? 0.25 + Math.random() * 0.5 : 1.5 + Math.random() * 4; } }
     basisQuat(b.fwd, b.up, b.qWant);
   }
-  // --- gliders: in from the trees, then from cap to cap ---
+  // --- gliders: in from the trees; then mostly on the wing, in long easy loops round you between the caps, with short rests on a cap top
+  // (Damian, 25 Nov 2026: it "looks great when flying... but does some unrealistic turns and movements... should mostly be flying")
+  const flat = new THREE.Vector3(), qb = new THREE.Quaternion(), Z = new THREE.Vector3(0, 0, 1);
+  const openLine = (P, Q) => { const n = Math.ceil(P.distanceTo(Q) / 0.3); for (let i = 1; i < n; i++) { v1.lerpVectors(P, Q, i / n); if (W.hit(v1, 0.8) >= 0 || Math.hypot(v1.x, v1.y - 1.55, v1.z) < 2) return false; } return true; };
   function gliderNext(b) {
+    const from = b.mode === 'wait' ? null : b.pos.clone();
     for (const fi of LAND.filter(fi => grown(fi) && !top[fi] && fi !== b.host).sort(() => Math.random() - 0.5)) { const sp = landSpot(fi); if (!sp) continue;
-      const B = sp.p.clone().addScaledVector(sp.n, 0.035 * b.s); let c;
-      if (b.mode === 'wait') { const a = THREE.MathUtils.degToRad(b.az + (Math.random() - 0.5) * 50); c = W.flight(new THREE.Vector3(Math.sin(a) * 26, 9 + Math.random() * 3, -Math.cos(a) * 26), B, { r: 0.5, hostB: fi, upB: sp.n, far: true, midAt: 0.72, lifts: [2.5, 3.5, 5, 7] }); }
-      else c = W.flight(b.pos.clone(), B, { r: 0.5, hostA: b.host, upA: b.spot.n, hostB: fi, upB: sp.n });
+      const B = sp.p.clone().addScaledVector(sp.n, 0.035 * b.s); let c = null;
+      for (let k = 0; k < 40 && !c; k++) { const pts = [], turn = Math.random() < 0.5 ? 1 : -1; let a, A;
+        if (!from) { a = THREE.MathUtils.degToRad(b.az + (Math.random() - 0.5) * 50); A = new THREE.Vector3(Math.sin(a) * 26, 9 + Math.random() * 3, -Math.cos(a) * 26); pts.push(A); a = Math.atan2(A.x, -A.z); }
+        else { A = from; a = Math.atan2(A.x, -A.z); pts.push(A); }
+        const loops = k > 37 ? 0 : k > 32 ? 1 : k > 24 ? 2 : k > 12 ? 3 + Math.floor(Math.random() * 2) : (from ? 5 : 2) + Math.floor(Math.random() * 3), w = [];
+        for (let i = 1; i <= loops; i++) { a += turn * (0.8 + Math.random() * 0.5); for (let q = 0; q < 30; q++) { const a2 = a + (Math.random() - 0.5) * 0.7, r = 3.0 + Math.random() * 6.5; tmp.set(Math.sin(a2) * r, 2.2 + Math.random() * 4.2, -Math.cos(a2) * r); if (W.hit(tmp, 1.1) < 0 && openLine(w[w.length - 1] || (from ? tmp2.copy(A).addScaledVector(Y, 0.9) : tmp), tmp)) { w.push(tmp.clone()); break; } } }
+        if (w.length < Math.min(loops, 3)) continue;
+        const first = w[0] || B, lastW = w[w.length - 1] || A;
+        if (from) pts.push(A.clone().addScaledVector(Y, 0.45).addScaledVector(flat.subVectors(first, A).setY(0).normalize(), 0.7));          // it lifts off forward, not straight up
+        pts.push(...w);
+        pts.push(B.clone().addScaledVector(Y, 0.5).addScaledVector(flat.subVectors(lastW, B).setY(0).normalize(), 0.9));                     // and comes in on a shallow glide
+        pts.push(B);
+        c = W.route(pts, { r: 0.5, hostA: from ? b.host : -1, hostB: fi }); }
       if (!c) continue;
-      if (b.host >= 0) top[b.host] = null; b.prev = b.host; top[fi] = b; b.host = fi; b.spot = sp; b.land = B; b.curve = c; b.u = 0; b.mode = 'fly'; return true; }
+      if (b.host >= 0) top[b.host] = null; b.prev = b.host; top[fi] = b; b.host = fi; b.spot = sp; b.land = B; b.curve = c; b.u = 0; b.bank = 0; b.yaw0 = null; b.mode = 'fly'; return true; }
     return false; }
   function glider(b, dt) {
-    if (b.mode === 'fly') { const L = b.curve.len, left = (1 - b.u) * L, sp = 0.5 + 2.6 * smooth(0, 2.2, left) * (0.35 + 0.65 * smooth(0, 1.2, b.u * L + 0.4));
-      b.u = Math.min(1, b.u + sp * dt / L); b.curve.getPointAt(b.u, b.pos); b.curve.getTangentAt(b.u, b.fwd); b.up.set(0, 1, 0); b.flap = 0.9;
-      if (left < 0.5) { b.up.lerpVectors(Y, b.spot.n, 1 - left / 0.5).normalize(); tmp.copy(b.fwd).addScaledVector(b.up, -b.fwd.dot(b.up)); if (tmp.lengthSq() > 0.01) b.fwd.copy(tmp.normalize()); }
-      if (b.u >= 1) { b.mode = 'rest'; b.t = 10 + Math.random() * 14; } }
-    else if (b.mode === 'rest') { b.t -= dt; b.flap += (0.1 - b.flap) * (1 - Math.exp(-dt * 2)); b.up.copy(b.spot.n); b.pos.copy(b.land).add(sway(b.host, b.land.y, off));
+    if (b.mode === 'fly') { const L = b.curve.len, left = (1 - b.u) * L, sp = 0.45 + 2.5 * smooth(0, 2.5, left) * (0.3 + 0.7 * smooth(0, 1.5, b.u * L + 0.3));
+      b.u = Math.min(1, b.u + sp * dt / L); b.curve.getPointAt(b.u, b.pos); b.curve.getTangentAt(b.u, tmp); b.flap = 0.9;
+      // the body keeps nearly level and turns only as fast as the path turns: nose a little up or down with the path, leaning into the turn
+      flat.copy(tmp).setY(0); if (flat.lengthSq() < 1e-4) flat.copy(b.fwd).setY(0); flat.normalize();
+      const pitch = clamp(Math.asin(clamp(tmp.y, -1, 1)), -0.4, 0.4), yawNow = Math.atan2(flat.x, flat.z); let dy = b.yaw0 === null ? 0 : yawNow - b.yaw0; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); b.yaw0 = yawNow;
+      b.bank += (clamp(-dy / Math.max(dt, 1e-3) * 0.35, -0.5, 0.5) * smooth(0, 1.5, left) - b.bank) * (1 - Math.exp(-dt * 3));
+      b.fwd.copy(flat).multiplyScalar(Math.cos(pitch)).addScaledVector(Y, Math.sin(pitch)); b.up.lerpVectors(Y, b.spot.n, 1 - smooth(0, 0.6, left)).normalize();
+      if (b.u >= 1) { b.mode = 'rest'; b.t = 2.5 + Math.random() * 3; } }
+    else if (b.mode === 'rest') { b.t -= dt; b.bank = 0; b.flap += (0.12 - b.flap) * (1 - Math.exp(-dt * 2)); b.up.copy(b.spot.n); b.pos.copy(b.land).add(sway(b.host, b.land.y, off));
       tmp.copy(b.fwd).addScaledVector(b.up, -b.fwd.dot(b.up)).normalize(); b.fwd.copy(tmp);
-      if (b.t <= 0 && !gliderNext(b)) b.t = 4; }
-    set(b, 'uFlap', b.flap); basisQuat(b.fwd, b.up, b.qWant);
+      if (b.t <= 0 && !gliderNext(b)) b.t = 0.7; }
+    set(b, 'uFlap', b.flap); basisQuat(b.fwd, b.up, b.qWant); b.qWant.multiply(qb.setFromAxisAngle(Z, b.bank || 0));
   }
   function start(b) {
-    if (b.role === 'glider') { b.root.visible = gliderNext(b); if (b.root.visible) { b.curve.getPointAt(0, b.pos); b.curve.getTangentAt(0, b.fwd); basisQuat(b.fwd, Y, b.q); } return; }
+    if (b.role === 'glider') { b.root.visible = gliderNext(b); if (b.root.visible) { b.curve.getPointAt(0, b.pos); b.curve.getTangentAt(0, b.fwd); b.fwd.setY(0).normalize(); basisQuat(b.fwd, Y, b.q); } return; }
     b.pos.copy(enter(b)); b.root.visible = true;
     if (b.role === 'hopper') { b.homeP = ab(b.home[0], b.home[1]); b.path = W.findPath(b.pos, b.homeP, b.rad); b.seg = 0; b.mode = 'sit'; b.t = 0; if (b.path) b.pos.copy(b.path[0]); }
     else { b.pos.copy(W.findPath(b.pos, new THREE.Vector3(0, 0, 3), b.rad)?.[0] || b.pos); crawlerNext(b); }
@@ -286,7 +304,7 @@ export async function createBugs({ scene, bin, camera, fungi, world: W }) {
         if (b.mode === 'wait') { if (time < b.arrive) continue; start(b); if (b.mode === 'wait') { b.arrive = time + 3; continue; } }
         if (b.host >= 0 && !grown(b.host)) { api.reset(); return; }
         if (b.role === 'crawler') crawler(b, dt); else if (b.role === 'hopper') hopper(b, dt); else glider(b, dt);
-        b.q.slerp(b.qWant, 1 - Math.exp(-dt * (b.role === 'glider' ? 4 : 7)));
+        b.q.slerp(b.qWant, 1 - Math.exp(-dt * (b.role === 'glider' ? 3 : 7)));
         b.root.position.copy(b.pos); b.root.quaternion.copy(b.q);
         set(b, 'uGait', b.gait); set(b, 'uWalk', b.walk); set(b, 'uCalm', b.mode === 'pause' || b.mode === 'perch' ? 0.6 : 0);
       }

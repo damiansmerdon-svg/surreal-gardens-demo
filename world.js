@@ -55,5 +55,11 @@ export function createWorld(fungi, eye = 1.55) {
         if (v.distanceTo(camP) < cam || (v.y < 0.3 && dA > ends && dB > ends) || hit(v, r, dA < ends ? (o.hostA ?? -1) : dB < ends ? (o.hostB ?? -1) : -1) >= 0) ok = false; }
       if (ok) { c.len = L; return c; } }
     return null; }
-  return { hit, free, los, findPath, flight, voxels: vox.size };
+  /** the smooth curve through pts if it is clear of every fungus (hostA / hostB excepted close to its two ends), the ground and you; or null */
+  function route(pts, o = {}) { const r = o.r ?? 0.5, ends = o.ends ?? 1.0, cam = o.cam ?? 1.5, A = pts[0], B = pts[pts.length - 1];
+    const c = new THREE.CatmullRomCurve3(pts, false, 'centripetal'), L = c.getLength(), n = Math.ceil(L / 0.15);
+    for (let i = 0; i <= n; i++) { c.getPointAt(i / n, v); const dA = v.distanceTo(A), dB = v.distanceTo(B);
+      if (v.distanceTo(camP) < cam || (v.y < 0.3 && dA > ends && dB > ends) || hit(v, r, dA < ends ? (o.hostA ?? -1) : dB < ends ? (o.hostB ?? -1) : -1) >= 0) return null; }
+    c.len = L; return c; }
+  return { hit, free, los, findPath, flight, route, voxels: vox.size };
 }

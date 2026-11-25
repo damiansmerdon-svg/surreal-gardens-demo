@@ -27,15 +27,15 @@ export async function createMoth({ scene, bin, camera, world: W, EYE }) {
   function play(name, fade = 0.5) { const a = actions[name]; if (!a || curName === name) return; a.reset().setLoop(THREE.LoopRepeat, Infinity); if (cur) { a.fadeIn(fade).play(); cur.fadeOut(fade); } else a.play(); cur = a; curName = name; }
   const wingSets = {};
   async function dress(v) { if (!wingSets[v]) wingSets[v] = await Promise.all(WINGS.map(w => tex('wing_' + v + '_' + w + '.webp', true))); WINGS.forEach((w, i) => { const m = M['SS_Wing_' + w]; m.map = m.emissiveMap = wingSets[v][i]; m.needsUpdate = true; }); }
-  let mode = 'away', next = 46, curve = null, u = 0, t = 0, hoverP = new THREE.Vector3(), blink = 0, bt = -1, lookW = 0, lookY = 0, lookP = 0, busy = false, visits = 0;
-  const q = new THREE.Quaternion(), qWant = new THREE.Quaternion(), fwd = new THREE.Vector3(), v = new THREE.Vector3(), camDir = new THREE.Vector3(), headRest = bones.Head ? null : null;
+  let mode = 'away', next = 46, curve = null, u = 0, t = 0, hoverP = new THREE.Vector3(), blink = 0, bt = -1, lookW = 0, lookY = 0, lookP = 0, busy = false, visits = 0, lvl = 1.02, lvlWant = 1.02;
+  const X = new THREE.Vector3(1, 0, 0), qx = new THREE.Quaternion(), q = new THREE.Quaternion(), qWant = new THREE.Quaternion(), fwd = new THREE.Vector3(), v = new THREE.Vector3(), camDir = new THREE.Vector3(), headRest = bones.Head ? null : null;
   const sky = () => { const a = Math.random() * 6.283; return new THREE.Vector3(Math.sin(a) * 42, 13 + Math.random() * 7, Math.cos(a) * 42); };
   async function plan() { busy = true;
     try { await dress(VARIANTS[(visits + Math.floor(Math.random() * 2)) % 4]);
       camera.getWorldDirection(camDir); const base = Math.atan2(camDir.x, camDir.z);
       for (let k = 0; k < 40; k++) { const a = base + (Math.random() - 0.5) * (0.6 + k * 0.15), r = 2.7 + Math.random() * 1.4; hoverP.set(Math.sin(a) * r, EYE + 0.15 + Math.random() * 0.75, Math.cos(a) * r);
         if (W.hit(hoverP, 1.1) >= 0) continue; const c = W.flight(sky(), hoverP, { r: 0.9, cam: 2.2, far: true, midAt: 0.8, lifts: [1.5, 3, 5, 8], sides: [0, 2.5, -2.5, 5, -5] }); if (!c) continue;
-        curve = c; u = 0; mode = 'in'; curve.getPointAt(0, root.position); curve.getTangentAt(0, fwd); basisQuat(fwd, Y, q); root.visible = true; visits++; play('Moth_Fly', 0); break; }
+        curve = c; u = 0; mode = 'in'; curve.getPointAt(0, root.position); curve.getTangentAt(0, fwd); fwd.y = 0; basisQuat(fwd, Y, q); lvl = 1.02; root.visible = true; visits++; play('Moth_Fly', 0); break; }
       if (mode !== 'in') next += 8; } finally { busy = false; } }
   function leave() { for (let k = 0; k < 30; k++) { const c = W.flight(hoverP, sky(), { r: 0.9, cam: 2.2, midAt: 0.25, lifts: [1.5, 3, 5, 8], sides: [0, 2.5, -2.5, 5, -5] }); if (c) { curve = c; u = 0; mode = 'out'; play('Moth_Fly', 0.8); return; } } t = 2; }
   return {
@@ -47,23 +47,26 @@ export async function createMoth({ scene, bin, camera, world: W, EYE }) {
       if (mode === 'away') { if (time > next && !busy) plan(); return; }
       mixer.update(dt);
       if (mode === 'in' || mode === 'out') { const L = curve.len, done = u * L, left = (1 - u) * L, sp = mode === 'in' ? 1.0 + 6.5 * smooth(0, 7, left) : 1.0 + 7.5 * smooth(0, 6, done);
-        u = Math.min(1, u + sp * dt / L); curve.getPointAt(u, root.position); curve.getTangentAt(u, fwd); basisQuat(fwd, Y, qWant); lookW += ((mode === 'in' && left < 9 ? 1 : 0) - lookW) * (1 - Math.exp(-dt * 2));
+        u = Math.min(1, u + sp * dt / L); curve.getPointAt(u, root.position); curve.getTangentAt(u, fwd); fwd.y = 0; if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1); lvlWant = mode === 'in' ? 1.02 * smooth(1.5, 6, left) : 1.02 * smooth(0.3, 3, done);
+        basisQuat(fwd, Y, qWant); lookW += ((mode === 'in' && left < 9 ? 1 : 0) - lookW) * (1 - Math.exp(-dt * 2));
         if (u >= 1) { if (mode === 'in') { mode = 'hover'; t = 6.5 + Math.random() * 4; play('Moth_Hover', 0.6); bt = -1; } else { mode = 'away'; root.visible = false; next = time + 40 + Math.random() * 45; } } }
       else if (mode === 'hover') { const t0 = t; t -= dt; lookW += (1 - lookW) * (1 - Math.exp(-dt * 3));
         root.position.copy(hoverP).add(v.set(0.05 * Math.sin(time * 0.9), 0.04 * Math.sin(time * 0.7 + 1), 0.05 * Math.sin(time * 1.3 + 2)));
-        basisQuat(v.subVectors(camera.position, root.position).setY(0), Y, qWant);
+        basisQuat(v.subVectors(camera.position, root.position).setY(0), Y, qWant); lvlWant = 0;
         if ((t0 > 4.6 && t <= 4.6) || (t0 > 2.2 && t <= 2.2)) bt = 0;
         if (t <= 0) leave(); }
-      q.slerp(qWant, 1 - Math.exp(-dt * 2.2)); root.quaternion.copy(q);
+      // Flying, the body lies level along its heading with its back to the sky, however the path climbs or dives, and the head is
+      // held up to look ahead (as in the grubs' scene); hovering, it hangs upright facing you.
+      lvl += (lvlWant - lvl) * (1 - Math.exp(-dt * 2.5)); q.slerp(qWant, 1 - Math.exp(-dt * 2.2)); root.quaternion.copy(q).multiply(qx.setFromAxisAngle(X, lvl));
       if (bt >= 0) { bt += dt; const k = bt / 0.28; blink = k < 0.32 ? smooth(0, 0.32, k) : k < 0.45 ? 1 : 1 - smooth(0.45, 1, k); if (k >= 1) { bt = -1; blink = 0; } }
       const x = (0.13 + 0.87 * blink) * 3; for (const o of lids) for (const side of ['R', 'L']) for (let k = 0; k < 3; k++) { const i = o.morphTargetDictionary['Blink_' + side + '_' + (k + 1)]; if (i !== undefined) o.morphTargetInfluences[i] = clamp(1 - Math.abs(x - (k + 1)), 0, 1); }
       const H = bones.Head; if (!H) return;                 // the head finds you, on top of whatever the body is doing (turn, then tip: never any roll)
       { const U = H.userData; if (U.qOut && H.quaternion.equals(U.qOut)) H.quaternion.copy(U.qIn); else (U.qIn || (U.qIn = new THREE.Quaternion())).copy(H.quaternion); }
       root.updateMatrixWorld(true);
-      const to = v.subVectors(camera.position, H.getWorldPosition(new THREE.Vector3())).normalize().applyQuaternion(q.clone().invert());
+      const rq = root.quaternion, to = v.subVectors(camera.position, H.getWorldPosition(new THREE.Vector3())).normalize().applyQuaternion(rq.clone().invert());
       const wy = clamp(Math.atan2(to.x, to.z), -0.75, 0.75) * lookW, wp = clamp(Math.atan2(to.y, Math.hypot(to.x, to.z)), -0.45, 0.45) * lookW, k = 1 - Math.exp(-dt * 3.5);
       lookY += (wy - lookY) * k; lookP += (wp - lookP) * k;
-      const look = new THREE.Quaternion().setFromEuler(new THREE.Euler(-lookP, lookY, 0, 'YXZ')), wl = q.clone().multiply(look).multiply(q.clone().invert()), pq = H.parent.getWorldQuaternion(new THREE.Quaternion());
+      const look = new THREE.Quaternion().setFromEuler(new THREE.Euler(-lookP - 0.76 * lvl, lookY, 0, 'YXZ')), wl = rq.clone().multiply(look).multiply(rq.clone().invert()), pq = H.parent.getWorldQuaternion(new THREE.Quaternion());
       H.quaternion.premultiply(pq.clone().invert().multiply(wl).multiply(pq)); (H.userData.qOut || (H.userData.qOut = new THREE.Quaternion())).copy(H.quaternion);
     },
   };
