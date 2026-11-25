@@ -160,10 +160,13 @@ export async function start() {
     return out;
   }
   let drag = null;
-  canvas.addEventListener('pointerdown', e => { turnTo = null; drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  // Hide takes the buttons away so only the picture is left (Damian, 26 Nov 2026); one tap on the picture brings them back, or hides them again
+  let tap = null; $('bHide').onclick = () => $('bar').classList.add('away');
+  canvas.addEventListener('pointerdown', e => { turnTo = null; tap = { x: e.clientX, y: e.clientY, t: performance.now() }; drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', e => { if (!drag) return; const k = 0.0032 * camera.fov / 70, dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
     if (ori.on) headingNudge += dx * k; else { yaw += dx * k; pitch = clamp(pitch + dy * k, -1.3, 1.3); } });
-  const endDrag = () => { drag = null; }; canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+  const endDrag = () => { drag = null; }; canvas.addEventListener('pointerup', e => { if (tap && performance.now() - tap.t < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 10) $('bar').classList.toggle('away'); tap = null; });
+  canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
 
   // ---------- camera backdrop ----------
   let stream = null;

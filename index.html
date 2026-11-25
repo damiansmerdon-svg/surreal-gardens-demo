@@ -63,6 +63,7 @@ button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--ac
 #scene{background:#000}
 #cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 #view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#bar.away{display:none!important}
 #stop{display:none!important;position:absolute;top:0;left:0;right:0;padding-top:calc(10px + env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:flex-start;gap:10px;pointer-events:none}
 #stop h2{font-family:var(--display);font-weight:400;font-size:20px;margin:0;text-shadow:0 1px 6px rgba(0,0,0,.8)}
 #hint{font-size:13px;margin-top:2px;text-shadow:0 1px 4px rgba(0,0,0,.9);opacity:.92;max-width:40ch}
@@ -128,6 +129,7 @@ button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--ac
     <button id="bMoth">Moth</button>
     <label>Size <input id="scale" type="range" min="0.5" max="1.5" step="0.05" value="1"></label>
     <button id="bMap">Map</button>
+    <button id="bHide">Hide</button>
   </div>
   <div id="note" hidden><div id="noteText"></div><button id="noteOk">OK</button></div>
   <div id="load"><div><div class="t">The mushroom path</div><div class="m" id="loadMsg">Loading the wetland and the fungi…</div><div class="bar"><i id="loadBar"></i></div><div class="err" id="loadErr" hidden></div></div></div>
